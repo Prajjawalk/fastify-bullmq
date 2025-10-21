@@ -2,7 +2,7 @@
   "name": "queue-service",
   "version": "0.1.0",
   "license": "MIT",
-  "author": "Faraz Patankar",
+  "author": "Prajjawal Khandelwal",
   "main": "dist/index.js",
   "module": "dist/queue-service.esm.js",
   "typings": "dist/index.d.ts",
@@ -27,7 +27,6 @@
     "singleQuote": true,
     "trailingComma": "es5"
   },
-  "peerDependencies": {},
   "engines": {
     "node": ">=14"
   },
@@ -44,6 +43,8 @@
     "@bull-board/ui": "^4.2.2",
     "bullmq": "^1.90.2",
     "envsafe": "^2.0.3",
-    "fastify": "^4.5.3"
+    "fastify": "^4.5.3",
+    "json-schema-to-ts": "^3.1.1",
+    "postmark": "^4.0.5"
   }
 }

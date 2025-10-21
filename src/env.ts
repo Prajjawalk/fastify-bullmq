@@ -11,4 +11,5 @@ export const env = envsafe({
   RAILWAY_STATIC_URL: str({
     devDefault: 'http://localhost:3000',
   }),
+  AUTH_POSTMARK_KEY: str(),
 });
