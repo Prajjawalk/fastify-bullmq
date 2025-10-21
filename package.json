@@ -28,7 +28,7 @@
     "trailingComma": "es5"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=16"
   },
   "devDependencies": {
     "@tsconfig/recommended": "^1.0.1",
