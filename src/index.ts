@@ -37,10 +37,10 @@ const email = {
     attachments: {
       type: 'object',
       properties: {
-        Name: 'string',
-        Content: 'string',
-        ContentID: 'string',
-        ContentType: 'string',
+        Name: { type: 'string' },
+        Content: { type: 'string' },
+        ContentID: { type: 'string' },
+        ContentType: { type: 'string' },
       },
     },
   },
@@ -59,10 +59,10 @@ const job = {
     attachments: {
       type: 'object',
       properties: {
-        Name: 'string',
-        Content: 'string',
-        ContentID: 'string',
-        ContentType: 'string',
+        Name: { type: 'string' },
+        Content: { type: 'string' },
+        ContentID: { type: 'string' },
+        ContentType: { type: 'string' },
       },
     },
   },
