@@ -81,7 +81,9 @@ const run = async () => {
   await setupQueueProcessor(emailQueue.name);
 
   const server: FastifyInstance<Server, IncomingMessage, ServerResponse> =
-    fastify();
+    fastify({
+      bodyLimit: 10485760, // Sets the global body limit to 10 MB
+    });
 
   const serverAdapter = new FastifyAdapter();
   createBullBoard({
