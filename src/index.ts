@@ -87,6 +87,7 @@ const run = async () => {
     },
     async (req, reply) => {
       const body = req.body;
+      console.log('Body: ', body);
       try {
         const job = await emailQueue.add(`Email`, body, { delay: 300000 });
 
