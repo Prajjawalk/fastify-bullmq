@@ -13,6 +13,8 @@ const connection: ConnectionOptions = {
 export const createQueue = (name: string) => new Queue(name, { connection });
 
 export const setupQueueProcessor = async (queueName: string) => {
+  console.log('Redis connection: ', connection);
+
   const queueScheduler = new QueueScheduler(queueName, {
     connection,
   });
