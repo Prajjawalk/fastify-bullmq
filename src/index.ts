@@ -17,12 +17,15 @@ const email = {
     htmlBody: { type: 'string' },
     textBody: { type: 'string' },
     attachments: {
-      type: 'object',
-      properties: {
-        Name: { type: 'string' },
-        Content: { type: 'string' },
-        ContentID: { type: 'string' },
-        ContentType: { type: 'string' },
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          Name: { type: 'string' },
+          Content: { type: 'string' },
+          ContentID: { type: 'string' },
+          ContentType: { type: 'string' },
+        },
       },
     },
   },
@@ -39,12 +42,15 @@ const job = {
     htmlBody: { type: 'string' },
     textBody: { type: 'string' },
     attachments: {
-      type: 'object',
-      properties: {
-        Name: { type: 'string' },
-        Content: { type: 'string' },
-        ContentID: { type: 'string' },
-        ContentType: { type: 'string' },
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          Name: { type: 'string' },
+          Content: { type: 'string' },
+          ContentID: { type: 'string' },
+          ContentType: { type: 'string' },
+        },
       },
     },
   },
