@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@tsconfig/recommended": "^1.0.1",
+    "json-schema-to-ts": "^3.1.1",
     "dts-cli": "^1.6.0",
     "husky": "^8.0.1",
     "tslib": "^2.4.0",
@@ -44,7 +45,6 @@
     "bullmq": "^1.90.2",
     "envsafe": "^2.0.3",
     "fastify": "^4.5.3",
-    "json-schema-to-ts": "^3.1.1",
     "postmark": "^4.0.5"
   }
 }

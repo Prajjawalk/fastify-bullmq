@@ -6,35 +6,7 @@ import { Server, IncomingMessage, ServerResponse } from 'http';
 import { env } from './env';
 
 import { createQueue, setupQueueProcessor } from './queue';
-
-interface EmailType {
-  fromEmail: string;
-  toEmail: string;
-  subject: string;
-  htmlBody: string;
-  textBody: string;
-  attachments: {
-    Name: string;
-    Content: string;
-    ContentID: string;
-    ContentType: string;
-  };
-}
-
-interface JobType {
-  jobId: string;
-  fromEmail: string;
-  toEmail: string;
-  subject: string;
-  htmlBody: string;
-  textBody: string;
-  attachments: {
-    Name: string;
-    Content: string;
-    ContentID: string;
-    ContentType: string;
-  };
-}
+import { FromSchema } from 'json-schema-to-ts';
 
 const email = {
   type: 'object',
@@ -106,7 +78,7 @@ const run = async () => {
     basePath: '/',
   });
 
-  server.post<{ Body: EmailType }>(
+  server.post<{ Body: FromSchema<typeof email> }>(
     '/add-mailing-job',
     {
       schema: {
@@ -131,7 +103,7 @@ const run = async () => {
     }
   );
 
-  server.post<{ Body: JobType }>(
+  server.post<{ Body: FromSchema<typeof job> }>(
     '/update-mailing-job',
     {
       schema: {
