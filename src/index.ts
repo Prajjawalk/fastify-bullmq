@@ -13,7 +13,12 @@ interface EmailType {
   subject: string;
   htmlBody: string;
   textBody: string;
-  attachments: string;
+  attachments: {
+    Name: string;
+    Content: string;
+    ContentID: string;
+    ContentType: string;
+  };
 }
 
 interface JobType {
@@ -23,7 +28,12 @@ interface JobType {
   subject: string;
   htmlBody: string;
   textBody: string;
-  attachments: string;
+  attachments: {
+    Name: string;
+    Content: string;
+    ContentID: string;
+    ContentType: string;
+  };
 }
 
 const email = {
