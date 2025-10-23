@@ -11,6 +11,8 @@ import { FromSchema } from 'json-schema-to-ts';
 const email = {
   type: 'object',
   properties: {
+    subdomain: { type: 'string' },
+    reportId: { type: 'string' },
     fromEmail: { type: 'string' },
     toEmail: { type: 'string' },
     subject: { type: 'string' },
@@ -35,6 +37,8 @@ const email = {
 const job = {
   type: 'object',
   properties: {
+    subdomain: { type: 'string' },
+    reportId: { type: 'string' },
     jobId: { type: 'string' },
     fromEmail: { type: 'string' },
     toEmail: { type: 'string' },
@@ -93,7 +97,6 @@ const run = async () => {
     },
     async (req, reply) => {
       const body = req.body;
-      console.log('Body: ', body);
       try {
         const job = await emailQueue.add(`Email`, body, { delay: 300000 });
 
