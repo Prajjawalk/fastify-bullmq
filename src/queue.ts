@@ -48,7 +48,7 @@ export const setupQueueProcessor = async (queueName: string) => {
         return { jobId: job.id, messageId: result.MessageID };
       } catch (e) {
         await fetch(
-          `https://${data.subdomain}.one2b.io/api/send-adv-report/webhook`,
+          `https://${job.data.subdomain}.one2b.io/api/send-adv-report/webhook`,
           {
             method: 'POST',
             body: JSON.stringify({
