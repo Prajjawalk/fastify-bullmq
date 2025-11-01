@@ -7,6 +7,10 @@ import { env } from './env';
 
 import { createQueue, setupQueueProcessor } from './queue';
 import { FromSchema } from 'json-schema-to-ts';
+import { SSEPluginOptions } from '@fastify/sse';
+import { FastifyCookieOptions } from '@fastify/cookie';
+import EventEmitter from 'events';
+import * as jose from 'jose';
 
 const email = {
   type: 'object',
@@ -68,6 +72,27 @@ const job = {
   ],
 } as const;
 
+const notification = {
+  type: 'object',
+  properties: {
+    notificationTitle: { type: 'string' },
+    notificationDescription: { type: 'string' },
+    refLink: { type: 'string' },
+    notificationRead: { type: 'string' },
+    createdAt: { type: 'string' },
+    organizationId: { type: 'string' },
+    platformId: { type: 'string' },
+  },
+  required: [
+    'notificationTitle',
+    'notificationDescription',
+    'notificationRead',
+    'createdAt',
+    'organizationId',
+    'platformId',
+  ],
+} as const;
+
 const run = async () => {
   const emailQueue = createQueue('EmailQueue');
   await setupQueueProcessor(emailQueue.name);
@@ -75,7 +100,15 @@ const run = async () => {
   const server: FastifyInstance<Server, IncomingMessage, ServerResponse> =
     fastify({
       bodyLimit: 10485760, // Sets the global body limit to 10 MB
+      logger: true,
     });
+
+  // Register cookie plugin
+  const fastifyCookie = require('@fastify/cookie');
+  server.register(fastifyCookie) as FastifyCookieOptions;
+
+  // Register SSE plugin
+  await server.register(require('@fastify/sse'));
 
   const serverAdapter = new FastifyAdapter();
   createBullBoard({
@@ -87,6 +120,70 @@ const run = async () => {
     prefix: '/',
     basePath: '/',
   });
+
+  const myEmitter = new EventEmitter();
+
+  // Create an SSE endpoint
+  server.get('/notification/', { sse: true }, async (request, reply) => {
+    const cookies = request.cookies;
+    const sessionToken = cookies['subdomain.sessionToken'];
+
+    const secret = jose.base64url.decode(env.AUTH_SECRET);
+
+    if (!sessionToken) {
+      throw new Error();
+    }
+
+    const { payload, protectedHeader } = await jose.jwtDecrypt(
+      sessionToken,
+      secret
+    );
+
+    console.log(payload, protectedHeader);
+
+    const organisationId = payload.organisationId;
+    const platformId = payload.platformId;
+    // Keep connection alive (prevents automatic close)
+    reply.sse.keepAlive();
+
+    myEmitter.on(
+      `notificationEvent_${platformId}_${organisationId}`,
+      async (data) => {
+        // Send a message
+        await reply.sse.send({ data });
+      }
+    );
+
+    // Send with full options
+    await reply.sse.send({
+      id: '123',
+      event: 'update',
+      data: { message: 'Hello World' },
+      retry: 1000,
+    });
+
+    // Clean up when connection closes
+    reply.sse.onClose(() => {
+      console.log('Connection closed');
+    });
+  });
+
+  server.post<{ Body: FromSchema<typeof notification> }>(
+    '/notification-relay/',
+    {
+      schema: {
+        body: notification,
+      },
+    },
+    async (request, reply) => {
+      const body = request.body;
+
+      const organisationId = body.organizationId;
+      const platformId = body.platformId;
+
+      myEmitter.emit(`notificationEvent_${platformId}_${organisationId}`, body);
+    }
+  );
 
   server.post<{ Body: FromSchema<typeof email> }>(
     '/add-mailing-job',

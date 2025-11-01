@@ -12,4 +12,5 @@ export const env = envsafe({
     devDefault: 'http://localhost:3000',
   }),
   AUTH_POSTMARK_KEY: str(),
+  AUTH_SECRET: str(),
 });
