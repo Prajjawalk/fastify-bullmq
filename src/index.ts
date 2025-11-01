@@ -122,6 +122,7 @@ const run = async () => {
     { sse: true },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const cookies = request.cookies;
+      console.log('cookies: ', cookies);
       const sessionToken = cookies['subdomain.sessionToken'];
 
       const secret = jose.base64url.decode(env.AUTH_SECRET);
