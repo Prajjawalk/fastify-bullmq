@@ -117,49 +117,63 @@ const run = async () => {
 
   // Create an SSE endpoint
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (server as any).get('/notification/', { sse: true }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const cookies = request.cookies;
-    const sessionToken = cookies['subdomain.sessionToken'];
+  (server as any).get(
+    '/notification/',
+    { sse: true },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const cookies = request.cookies;
+      const sessionToken = cookies['subdomain.sessionToken'];
 
-    const secret = jose.base64url.decode(env.AUTH_SECRET);
+      const secret = jose.base64url.decode(env.AUTH_SECRET);
 
-    if (!sessionToken) {
-      throw new Error();
-    }
-
-    const { payload, protectedHeader } = await jose.jwtDecrypt(
-      sessionToken,
-      secret
-    );
-
-    console.log(payload, protectedHeader);
-
-    const organisationId = payload.organisationId;
-    const platformId = payload.platformId;
-    // Keep connection alive (prevents automatic close)
-    reply.sse.keepAlive();
-
-    myEmitter.on(
-      `notificationEvent_${platformId}_${organisationId}`,
-      async (data) => {
-        // Send a message
-        await reply.sse.send({ data });
+      if (!sessionToken) {
+        throw new Error('Session token not found');
       }
-    );
 
-    // Send with full options
-    await reply.sse.send({
-      id: '123',
-      event: 'update',
-      data: { message: 'Hello World' },
-      retry: 1000,
-    });
+      try {
+        const { payload, protectedHeader } = await jose.jwtDecrypt(
+          sessionToken,
+          secret
+        );
 
-    // Clean up when connection closes
-    reply.sse.onClose(() => {
-      console.log('Connection closed');
-    });
-  });
+        console.log(payload, protectedHeader);
+
+        const organisationId = payload.organisationId;
+        const platformId = payload.platformId;
+        // Keep connection alive (prevents automatic close)
+        reply.sse.keepAlive();
+
+        myEmitter.on(
+          `notificationEvent_${platformId}_${organisationId}`,
+          async (data) => {
+            // Send a message
+            await reply.sse.send({ data });
+          }
+        );
+
+        // Send with full options
+        await reply.sse.send({
+          id: '123',
+          event: 'update',
+          data: { message: 'Hello World' },
+          retry: 1000,
+        });
+
+        // Clean up when connection closes
+        reply.sse.onClose(() => {
+          console.log('Connection closed');
+        });
+      } catch (e) {
+        // Send with full options
+        await reply.sse.send({
+          id: '123',
+          event: 'error',
+          data: { message: e },
+          retry: 1000,
+        });
+      }
+    }
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(
@@ -169,7 +183,10 @@ const run = async () => {
         body: notification,
       },
     },
-    async (request: FastifyRequest<{ Body: FromSchema<typeof notification> }>, _reply: FastifyReply) => {
+    async (
+      request: FastifyRequest<{ Body: FromSchema<typeof notification> }>,
+      _reply: FastifyReply
+    ) => {
       const body = request.body;
 
       const organisationId = body.organizationId;
@@ -187,7 +204,10 @@ const run = async () => {
         body: email,
       },
     },
-    async (req: FastifyRequest<{ Body: FromSchema<typeof email> }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Body: FromSchema<typeof email> }>,
+      reply: FastifyReply
+    ) => {
       const body = req.body;
       try {
         const job = await emailQueue.add(`Email`, body, { delay: 300000 });
@@ -213,7 +233,10 @@ const run = async () => {
         body: job,
       },
     },
-    async (req: FastifyRequest<{ Body: FromSchema<typeof job> }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Body: FromSchema<typeof job> }>,
+      reply: FastifyReply
+    ) => {
       const {
         jobId,
         fromEmail,
