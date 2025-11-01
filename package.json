@@ -42,7 +42,7 @@
     "@bull-board/api": "^4.2.2",
     "@bull-board/fastify": "^4.2.2",
     "@bull-board/ui": "^4.2.2",
-    "@fastify/cookie": "^11.0.2",
+    "@fastify/cookie": "^7.x",
     "@fastify/sse": "^0.4.0",
     "bullmq": "^1.90.2",
     "envsafe": "^2.0.3",
