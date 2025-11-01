@@ -1,4 +1,4 @@
-import { ConnectionOptions, Queue, QueueScheduler, Worker } from 'bullmq';
+import { ConnectionOptions, Queue, Worker } from 'bullmq';
 
 import { env } from './env';
 import { ServerClient } from 'postmark';
@@ -13,10 +13,8 @@ const connection: ConnectionOptions = {
 export const createQueue = (name: string) => new Queue(name, { connection });
 
 export const setupQueueProcessor = async (queueName: string) => {
-  const queueScheduler = new QueueScheduler(queueName, {
-    connection,
-  });
-  await queueScheduler.waitUntilReady();
+  // QueueScheduler is no longer needed in BullMQ v4+
+  // Scheduling functionality is now built into the Queue itself
 
   new Worker(
     queueName,

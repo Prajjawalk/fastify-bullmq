@@ -1,14 +1,10 @@
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { FastifyAdapter } from '@bull-board/fastify';
-import fastify, { FastifyInstance } from 'fastify';
-import { Server, IncomingMessage, ServerResponse } from 'http';
+import fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import { env } from './env';
-
 import { createQueue, setupQueueProcessor } from './queue';
 import { FromSchema } from 'json-schema-to-ts';
-import { SSEPluginOptions } from '@fastify/sse';
-import { FastifyCookieOptions } from '@fastify/cookie';
 import EventEmitter from 'events';
 import * as jose from 'jose';
 
@@ -97,34 +93,31 @@ const run = async () => {
   const emailQueue = createQueue('EmailQueue');
   await setupQueueProcessor(emailQueue.name);
 
-  const server: FastifyInstance<Server, IncomingMessage, ServerResponse> =
-    fastify({
-      bodyLimit: 10485760, // Sets the global body limit to 10 MB
-      logger: true,
-    });
+  const server = fastify({
+    bodyLimit: 10485760, // Sets the global body limit to 10 MB
+    logger: true,
+  });
 
-  // Register cookie plugin
-  const fastifyCookie = require('@fastify/cookie');
-  server.register(fastifyCookie) as FastifyCookieOptions;
+  const myEmitter = new EventEmitter();
 
-  // Register SSE plugin
-  await server.register(require('@fastify/sse'));
+  // Register plugins
+  void server.register(require('@fastify/cookie'));
+  void server.register(require('@fastify/sse'));
 
+  // Register BullBoard
   const serverAdapter = new FastifyAdapter();
   createBullBoard({
     queues: [new BullMQAdapter(emailQueue)],
     serverAdapter,
   });
-  serverAdapter.setBasePath('/');
-  server.register(serverAdapter.registerPlugin(), {
-    prefix: '/',
-    basePath: '/',
+  serverAdapter.setBasePath('/ui');
+  void server.register(serverAdapter.registerPlugin(), {
+    prefix: '/ui',
   });
 
-  const myEmitter = new EventEmitter();
-
   // Create an SSE endpoint
-  server.get('/notification/', { sse: true }, async (request, reply) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).get('/notification/', { sse: true }, async (request: FastifyRequest, reply: FastifyReply) => {
     const cookies = request.cookies;
     const sessionToken = cookies['subdomain.sessionToken'];
 
@@ -168,14 +161,15 @@ const run = async () => {
     });
   });
 
-  server.post<{ Body: FromSchema<typeof notification> }>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
     '/notification-relay/',
     {
       schema: {
         body: notification,
       },
     },
-    async (request, reply) => {
+    async (request: FastifyRequest<{ Body: FromSchema<typeof notification> }>, _reply: FastifyReply) => {
       const body = request.body;
 
       const organisationId = body.organizationId;
@@ -185,14 +179,15 @@ const run = async () => {
     }
   );
 
-  server.post<{ Body: FromSchema<typeof email> }>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
     '/add-mailing-job',
     {
       schema: {
         body: email,
       },
     },
-    async (req, reply) => {
+    async (req: FastifyRequest<{ Body: FromSchema<typeof email> }>, reply: FastifyReply) => {
       const body = req.body;
       try {
         const job = await emailQueue.add(`Email`, body, { delay: 300000 });
@@ -210,14 +205,15 @@ const run = async () => {
     }
   );
 
-  server.post<{ Body: FromSchema<typeof job> }>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
     '/update-mailing-job',
     {
       schema: {
         body: job,
       },
     },
-    async (req, reply) => {
+    async (req: FastifyRequest<{ Body: FromSchema<typeof job> }>, reply: FastifyReply) => {
       const {
         jobId,
         fromEmail,
@@ -231,7 +227,7 @@ const run = async () => {
         const job = await emailQueue.getJob(jobId);
 
         if (job) {
-          await job.update({
+          await job.updateData({
             fromEmail,
             toEmail,
             subject,
