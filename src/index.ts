@@ -121,26 +121,19 @@ const run = async () => {
     '/notification/',
     { sse: true },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const cookies = request.cookies;
-      console.log('cookies: ', cookies);
-      const sessionToken = cookies['subdomain.sessionToken'];
-
-      const secret = jose.base64url.decode(env.AUTH_SECRET);
-
-      if (!sessionToken) {
-        throw new Error('Session token not found');
-      }
+      const headers = request.headers;
 
       try {
-        const { payload, protectedHeader } = await jose.jwtDecrypt(
-          sessionToken,
-          secret
+        const organisationId = headers['X-Organisation-Id'];
+        const platformId = headers['X-Platform-Id'];
+
+        console.log('headers: ', headers);
+        console.log(
+          'platformId & organisationId: ',
+          platformId,
+          organisationId
         );
 
-        console.log(payload, protectedHeader);
-
-        const organisationId = payload.organisationId;
-        const platformId = payload.platformId;
         // Keep connection alive (prevents automatic close)
         reply.sse.keepAlive();
 
