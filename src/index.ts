@@ -159,12 +159,12 @@ const run = async () => {
           `notificationEvent_${platformId}_${organisationId}`,
           async (data) => {
             // Send a message
-            await reply.sse.send({ data });
+            await reply.sse?.send({ data });
           }
         );
 
         // Send with full options
-        await reply.sse.send({
+        await reply.sse?.send({
           id: '123',
           event: 'update',
           data: { message: 'Hello World' },
@@ -177,7 +177,7 @@ const run = async () => {
         });
       } catch (e) {
         // Send with full options
-        await reply.sse.send({
+        await reply.sse?.send({
           id: '123',
           event: 'error',
           data: { message: e },
