@@ -124,7 +124,7 @@ const run = async () => {
       reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
       reply.header(
         'Access-Control-Allow-Headers',
-        'Content-Type, Authorization'
+        'Content-Type, Authorization, x-platform-id, x-organisation-id'
       );
       reply.header('Access-Control-Max-Age', '86400'); // Cache preflight response for 24 hours
 
