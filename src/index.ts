@@ -115,6 +115,18 @@ const run = async () => {
     prefix: '/ui',
   });
 
+  // Define an OPTIONS route for a specific path
+  server.options('/notification/', async (request, reply) => {
+    // Set appropriate CORS headers for preflight requests
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    reply.header('Access-Control-Max-Age', '86400'); // Cache preflight response for 24 hours
+
+    // Send an empty response with a 204 No Content status for successful preflight
+    reply.code(204).send();
+  });
+
   // Create an SSE endpoint
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).get(
