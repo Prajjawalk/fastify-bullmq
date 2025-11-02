@@ -6,7 +6,6 @@ import { env } from './env';
 import { createQueue, setupQueueProcessor } from './queue';
 import { FromSchema } from 'json-schema-to-ts';
 import EventEmitter from 'events';
-import * as jose from 'jose';
 
 const email = {
   type: 'object',
@@ -103,6 +102,12 @@ const run = async () => {
   // Register plugins
   void server.register(require('@fastify/cookie'));
   void server.register(require('@fastify/sse'));
+  void server.register(require('@fastify/cors'), {
+    origin: ['*'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+    // Other options like allowedHeaders, exposedHeaders, preflightContinue, optionsSuccessStatus
+  });
 
   // Register BullBoard
   const serverAdapter = new FastifyAdapter();
@@ -115,23 +120,23 @@ const run = async () => {
     prefix: '/ui',
   });
 
-  // Define an OPTIONS route for a specific path
-  (server as any).options(
-    '/notification/',
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      // Set appropriate CORS headers for preflight requests
-      reply.header('Access-Control-Allow-Origin', '*');
-      reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      reply.header(
-        'Access-Control-Allow-Headers',
-        'Content-Type, Authorization, x-platform-id, x-organisation-id'
-      );
-      reply.header('Access-Control-Max-Age', '86400'); // Cache preflight response for 24 hours
+  // // Define an OPTIONS route for a specific path
+  // (server as any).options(
+  //   '/notification/',
+  //   async (request: FastifyRequest, reply: FastifyReply) => {
+  //     // Set appropriate CORS headers for preflight requests
+  //     reply.header('Access-Control-Allow-Origin', '*');
+  //     reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  //     reply.header(
+  //       'Access-Control-Allow-Headers',
+  //       'Content-Type, Authorization, x-platform-id, x-organisation-id'
+  //     );
+  //     reply.header('Access-Control-Max-Age', '86400'); // Cache preflight response for 24 hours
 
-      // Send an empty response with a 204 No Content status for successful preflight
-      reply.code(204).send();
-    }
-  );
+  //     // Send an empty response with a 204 No Content status for successful preflight
+  //     reply.code(204).send();
+  //   }
+  // );
 
   // Create an SSE endpoint
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

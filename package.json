@@ -43,6 +43,7 @@
     "@bull-board/fastify": "^6.14.0",
     "@bull-board/ui": "^6.14.0",
     "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.1.0",
     "@fastify/sse": "^0.4.0",
     "bullmq": "^5.63.0",
     "envsafe": "^2.0.3",
