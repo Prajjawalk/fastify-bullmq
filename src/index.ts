@@ -138,7 +138,7 @@ const run = async () => {
   (server as any).get(
     '/notification/',
     { sse: true },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: any) => {
       const headers = request.headers;
 
       try {
