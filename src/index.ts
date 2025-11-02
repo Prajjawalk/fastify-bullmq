@@ -142,8 +142,8 @@ const run = async () => {
       const headers = request.headers;
 
       try {
-        const organisationId = headers['X-Organisation-Id'];
-        const platformId = headers['X-Platform-Id'];
+        const organisationId = headers['x-organisation-id'];
+        const platformId = headers['x-platform-id'];
 
         console.log('headers: ', headers);
         console.log(
