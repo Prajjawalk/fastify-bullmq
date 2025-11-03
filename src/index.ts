@@ -151,8 +151,6 @@ const run = async () => {
         const organisationId = headers['x-organisation-id'];
         const platformId = headers['x-platform-id'];
 
-        console.log('sse: ', reply.sse);
-
         // Keep connection alive (prevents automatic close)
         reply.sse.keepAlive();
 
@@ -167,7 +165,12 @@ const run = async () => {
           async (data) => {
             console.log('Received notification: ', data);
             // Send a message
-            await reply.sse?.send({ data });
+            await reply.sse?.send({
+              id: '123',
+              event: 'update',
+              data: data,
+              retry: 1000,
+            });
           }
         );
 
@@ -208,12 +211,19 @@ const run = async () => {
       request: FastifyRequest<{ Body: FromSchema<typeof notification> }>,
       _reply: FastifyReply
     ) => {
-      const body = request.body;
+      try {
+        const body = request.body;
 
-      const organisationId = body.organizationId;
-      const platformId = body.platformId;
+        const organisationId = body.organizationId;
+        const platformId = body.platformId;
 
-      myEmitter.emit(`notificationEvent_${platformId}_${organisationId}`, body);
+        myEmitter.emit(
+          `notificationEvent_${platformId}_${organisationId}`,
+          body
+        );
+      } catch (e) {
+        console.error('Error relaying notification: ', e);
+      }
     }
   );
 
