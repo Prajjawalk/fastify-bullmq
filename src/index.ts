@@ -150,37 +150,45 @@ const run = async () => {
         const organisationId = headers['x-organisation-id'];
         const platformId = headers['x-platform-id'];
 
-        console.log('headers: ', headers);
-        console.log(
-          'platformId & organisationId: ',
-          platformId,
-          organisationId
-        );
+        console.log('sse: ', reply.sse);
 
         // Keep connection alive (prevents automatic close)
         reply.sse.keepAlive();
 
+        // Send initial message
+        await reply.sse?.send({ data: 'Connected' });
+
+        // Check if keepAlive was called
+        console.log('Keep alive status:', reply.sse.shouldKeepAlive); // true
+
         myEmitter.on(
           `notificationEvent_${platformId}_${organisationId}`,
           async (data) => {
+            console.log('Received notification: ', data);
             // Send a message
             await reply.sse?.send({ data });
           }
         );
 
         // Send with full options
-        await reply.sse?.send({
-          id: '123',
-          event: 'update',
-          data: { message: 'Hello World' },
-          retry: 1000,
-        });
+        await reply.sse?.send(
+          {
+            id: '123',
+            event: 'update',
+            data: { message: 'Hello World' },
+            retry: 1000,
+          },
+          {
+            headers: {},
+          }
+        );
 
         // Clean up when connection closes
         reply.sse.onClose(() => {
           console.log('Connection closed');
         });
       } catch (e) {
+        console.error('Error in notification stream: ', e);
         // Send with full options
         await reply.sse?.send({
           id: '123',
