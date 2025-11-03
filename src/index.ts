@@ -104,7 +104,7 @@ const run = async () => {
   void server.register(require('@fastify/cookie'));
   await server.register(fastifySSE);
   void server.register(require('@fastify/cors'), {
-    origin: ['*'],
+    origin: ['*'], //TODO: make origin *.one2b.io
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
     // Other options like allowedHeaders, exposedHeaders, preflightContinue, optionsSuccessStatus
@@ -121,24 +121,6 @@ const run = async () => {
     prefix: '/ui',
   });
 
-  // // Define an OPTIONS route for a specific path
-  // (server as any).options(
-  //   '/notification/',
-  //   async (request: FastifyRequest, reply: FastifyReply) => {
-  //     // Set appropriate CORS headers for preflight requests
-  //     reply.header('Access-Control-Allow-Origin', '*');
-  //     reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  //     reply.header(
-  //       'Access-Control-Allow-Headers',
-  //       'Content-Type, Authorization, x-platform-id, x-organisation-id'
-  //     );
-  //     reply.header('Access-Control-Max-Age', '86400'); // Cache preflight response for 24 hours
-
-  //     // Send an empty response with a 204 No Content status for successful preflight
-  //     reply.code(204).send();
-  //   }
-  // );
-
   // Create an SSE endpoint
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).get(
@@ -151,14 +133,13 @@ const run = async () => {
         const organisationId = headers['x-organisation-id'];
         const platformId = headers['x-platform-id'];
 
+        //TODO: add server/user authentication as additional security layer
+
         // Keep connection alive (prevents automatic close)
         reply.sse.keepAlive();
 
         // Send initial message
         await reply.sse?.send({ data: 'Connected' });
-
-        // Check if keepAlive was called
-        console.log('Keep alive status:', reply.sse.shouldKeepAlive); // true
 
         myEmitter.on(
           `notificationEvent_${platformId}_${organisationId}`,
@@ -166,30 +147,12 @@ const run = async () => {
             console.log('Received notification: ', data);
             // Send a message
             await reply.sse?.send({
-              id: '123',
               event: 'notification',
               data: data,
               retry: 1000,
             });
           }
         );
-
-        // Send with full options
-        await reply.sse?.send({
-          id: '123',
-          event: 'update',
-          data: { message: 'Hello World' },
-          retry: 1000,
-        });
-
-        // Set up periodic updates
-        const interval = setInterval(async () => {
-          if (reply.sse.isConnected) {
-            await reply.sse.send({ data: 'ping' });
-          } else {
-            clearInterval(interval);
-          }
-        }, 1000);
 
         // Clean up when connection closes
         reply.sse.onClose(() => {
@@ -199,7 +162,6 @@ const run = async () => {
         console.error('Error in notification stream: ', e);
         // Send with full options
         await reply.sse?.send({
-          id: '123',
           event: 'error',
           data: { message: e },
           retry: 1000,
