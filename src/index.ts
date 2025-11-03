@@ -6,6 +6,7 @@ import { env } from './env';
 import { createQueue, setupQueueProcessor } from './queue';
 import { FromSchema } from 'json-schema-to-ts';
 import EventEmitter from 'events';
+import fastifySSE from '@fastify/sse';
 
 const email = {
   type: 'object',
@@ -101,7 +102,7 @@ const run = async () => {
 
   // Register plugins
   void server.register(require('@fastify/cookie'));
-  void server.register(require('@fastify/sse'));
+  await server.register(fastifySSE);
   void server.register(require('@fastify/cors'), {
     origin: ['*'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -171,17 +172,12 @@ const run = async () => {
         );
 
         // Send with full options
-        await reply.sse?.send(
-          {
-            id: '123',
-            event: 'update',
-            data: { message: 'Hello World' },
-            retry: 1000,
-          },
-          {
-            headers: {},
-          }
-        );
+        await reply.sse?.send({
+          id: '123',
+          event: 'update',
+          data: { message: 'Hello World' },
+          retry: 1000,
+        });
 
         // Clean up when connection closes
         reply.sse.onClose(() => {
