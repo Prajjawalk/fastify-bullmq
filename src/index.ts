@@ -167,7 +167,7 @@ const run = async () => {
             // Send a message
             await reply.sse?.send({
               id: '123',
-              event: 'update',
+              event: 'notification',
               data: data,
               retry: 1000,
             });
@@ -181,6 +181,15 @@ const run = async () => {
           data: { message: 'Hello World' },
           retry: 1000,
         });
+
+        // Set up periodic updates
+        const interval = setInterval(async () => {
+          if (reply.sse.isConnected) {
+            await reply.sse.send({ data: 'ping' });
+          } else {
+            clearInterval(interval);
+          }
+        }, 1000);
 
         // Clean up when connection closes
         reply.sse.onClose(() => {
