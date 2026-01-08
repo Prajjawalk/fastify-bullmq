@@ -394,6 +394,10 @@ const run = async () => {
               data: { processingStatus: MeetingProcessingStatus.PROCESSING },
             });
 
+            // Wait for Fireflies to fully process the transcript (30 seconds)
+            console.log(`Waiting 30 seconds before fetching transcript for meeting ${meetingId}...`);
+            await new Promise(resolve => setTimeout(resolve, 30000));
+
             // Fetch full transcript from Fireflies
             const transcript = await fetchTranscriptFromFireflies(meetingId);
 
