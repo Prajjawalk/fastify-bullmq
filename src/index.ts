@@ -7,6 +7,9 @@ import { createQueue, setupQueueProcessor } from './queue';
 import { FromSchema } from 'json-schema-to-ts';
 import EventEmitter from 'events';
 import fastifySSE from '@fastify/sse';
+import { db } from './db';
+import { fetchTranscriptFromFireflies } from './fireflies';
+import { MeetingProcessingStatus } from '@prisma/client';
 
 const email = {
   type: 'object',
@@ -88,6 +91,48 @@ const notification = {
     'platformId',
   ],
 } as const;
+
+const firefliesWebhook = {
+  type: 'object',
+  properties: {
+    meetingId: { type: 'string' },
+    eventType: { type: 'string' },
+    clientReferenceId: { type: 'string' },
+  },
+  required: ['meetingId', 'eventType'],
+} as const;
+
+// Helper function to match organizer email to community member, company, or project
+async function matchMeetingToEntity(organizerEmail: string) {
+  // Try to match to community member
+  const communityLead = await db.communityLead.findUnique({
+    where: { email: organizerEmail },
+  });
+
+  if (communityLead) {
+    return { type: 'community', id: communityLead.id };
+  }
+
+  // Try to match to company (using companyEmail field)
+  const companyLead = await db.communityCompanyLead.findFirst({
+    where: { companyEmail: organizerEmail },
+  });
+
+  if (companyLead) {
+    return { type: 'company', id: companyLead.id };
+  }
+
+  // Try to match to project (using companyEmail field - contact email)
+  const projectLead = await db.communityProjectLead.findFirst({
+    where: { companyEmail: organizerEmail },
+  });
+
+  if (projectLead) {
+    return { type: 'project', id: projectLead.id };
+  }
+
+  return null;
+}
 
 const run = async () => {
   const emailQueue = createQueue('EmailQueue');
@@ -274,6 +319,157 @@ const run = async () => {
         reply.send({
           ok: false,
           error: e,
+        });
+      }
+    }
+  );
+
+  // Fireflies webhook endpoint
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/fireflies-webhook',
+    {
+      schema: {
+        body: firefliesWebhook,
+      },
+    },
+    async (
+      req: FastifyRequest<{ Body: FromSchema<typeof firefliesWebhook> }>,
+      reply: FastifyReply
+    ) => {
+      const { meetingId, eventType, clientReferenceId } = req.body;
+
+      try {
+        console.log(
+          `Received Fireflies webhook: ${eventType} for meeting ${meetingId}`
+        );
+
+        // Only process "Transcription completed" events
+        if (eventType !== 'Transcription completed') {
+          reply.send({
+            ok: true,
+            message: 'Event type not processed',
+          });
+          return;
+        }
+
+        // Check if we already have this meeting
+        const existing = await db.meetingTranscript.findUnique({
+          where: { firefliesMeetingId: meetingId },
+        });
+
+        if (existing) {
+          console.log(`Meeting ${meetingId} already exists, skipping`);
+          reply.send({
+            ok: true,
+            message: 'Meeting already processed',
+          });
+          return;
+        }
+
+        // Create initial record with RECEIVED status
+        const meetingRecord = await db.meetingTranscript.create({
+          data: {
+            firefliesMeetingId: meetingId,
+            clientReferenceId: clientReferenceId ?? undefined,
+            title: 'Processing...', // Temporary title
+            date: new Date(),
+            organizerEmail: 'unknown@email.com', // Temporary
+            processingStatus: MeetingProcessingStatus.RECEIVED,
+          },
+        });
+
+        // Process asynchronously - don't block webhook response
+        void (async () => {
+          try {
+            // Update status to PROCESSING
+            await db.meetingTranscript.update({
+              where: { id: meetingRecord.id },
+              data: { processingStatus: MeetingProcessingStatus.PROCESSING },
+            });
+
+            // Fetch full transcript from Fireflies
+            const transcript = await fetchTranscriptFromFireflies(meetingId);
+
+            // Match to community member, company, or project
+            const match = await matchMeetingToEntity(transcript.organizerEmail);
+
+            // Update record with full transcript data
+            await db.meetingTranscript.update({
+              where: { id: meetingRecord.id },
+              data: {
+                title: transcript.title,
+                date: new Date(transcript.date),
+                dateString: transcript.dateString ?? undefined,
+                duration: transcript.duration ?? undefined,
+                meetingLink: transcript.meetingLink ?? undefined,
+                transcriptUrl: transcript.transcriptUrl ?? undefined,
+                audioUrl: transcript.audioUrl ?? undefined,
+                videoUrl: transcript.videoUrl ?? undefined,
+                hostEmail: transcript.hostEmail ?? undefined,
+                organizerEmail: transcript.organizerEmail,
+                calendarType: transcript.calendarType ?? undefined,
+                calendarId: transcript.calendarId ?? undefined,
+                participants: transcript.participants ?? [],
+                firefliesUsers: transcript.firefliesUsers ?? [],
+                meetingAttendees: transcript.meetingAttendees
+                  ? (transcript.meetingAttendees as any)
+                  : undefined,
+                meetingAttendance: transcript.meetingAttendance
+                  ? (transcript.meetingAttendance as any)
+                  : undefined,
+                speakers: transcript.speakers ? (transcript.speakers as any) : undefined,
+                sentences: transcript.sentences ? (transcript.sentences as any) : undefined,
+                summary: transcript.summary ? (transcript.summary as any) : undefined,
+                analytics: transcript.analytics
+                  ? (transcript.analytics as any)
+                  : undefined,
+                meetingInfo: transcript.meetingInfo
+                  ? (transcript.meetingInfo as any)
+                  : undefined,
+                privacy: transcript.privacy ?? undefined,
+                communityLeadId:
+                  match?.type === 'community' ? match.id : undefined,
+                companyLeadId: match?.type === 'company' ? match.id : undefined,
+                projectLeadId: match?.type === 'project' ? match.id : undefined,
+                processingStatus: match
+                  ? MeetingProcessingStatus.MATCHED
+                  : MeetingProcessingStatus.UNMATCHED,
+                processedAt: new Date(),
+              },
+            });
+
+            console.log(
+              `Successfully processed meeting ${meetingId}, matched: ${match ? match.type : 'none'}`
+            );
+          } catch (error) {
+            console.error(
+              `Error processing meeting ${meetingId}:`,
+              error
+            );
+
+            // Update record with error status
+            await db.meetingTranscript.update({
+              where: { id: meetingRecord.id },
+              data: {
+                processingStatus: MeetingProcessingStatus.FAILED,
+                errorMessage:
+                  error instanceof Error ? error.message : 'Unknown error',
+                processedAt: new Date(),
+              },
+            });
+          }
+        })();
+
+        reply.send({
+          ok: true,
+          message: 'Webhook received, processing in background',
+        });
+      } catch (e) {
+        console.error('Error handling Fireflies webhook:', e);
+        reply.send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
         });
       }
     }

@@ -1,4 +1,4 @@
-import { envsafe, port, str } from 'envsafe';
+import { envsafe, port, str, url } from 'envsafe';
 
 export const env = envsafe({
   REDISHOST: str(),
@@ -13,4 +13,9 @@ export const env = envsafe({
   }),
   AUTH_POSTMARK_KEY: str(),
   AUTH_SECRET: str(),
+  DATABASE_URL: url(),
+  FIREFLIES_API_KEY: str(),
+  FIREFLIES_WEBHOOK_SECRET: str({
+    default: '', // Optional: for verifying webhook signatures
+  }),
 });

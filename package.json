@@ -14,7 +14,8 @@
     "build": "dts build",
     "lint": "dts lint",
     "watch": "dts watch",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "postinstall": "prisma generate"
   },
   "husky": {
     "hooks": {
@@ -45,10 +46,12 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.1.0",
     "@fastify/sse": "^0.4.0",
+    "@prisma/client": "^6.19.1",
     "bullmq": "^5.63.0",
     "envsafe": "^2.0.3",
     "fastify": "^5.5.0",
     "jose": "^6.1.0",
-    "postmark": "^4.0.5"
+    "postmark": "^4.0.5",
+    "prisma": "^6.19.1"
   }
 }

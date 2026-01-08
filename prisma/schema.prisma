@@ -1,0 +1,1347 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
+  refresh_token_expires_in Int?
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  userId     String
+  workflowId String
+  oldValues  Json?
+  newValues  Json?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+
+  @@index([action])
+  @@index([createdAt])
+  @@index([entityId])
+  @@index([entityType])
+  @@index([userId])
+  @@index([workflowId])
+}
+
+model Document {
+  id             String   @id @default(cuid())
+  filename       String
+  originalName   String
+  fileData       String?   @db.Text // Base64 encoded file content
+  filePath       String?  // Deprecated: kept for backward compatibility
+  fileSize       Int
+  mimeType       String
+  questionNumber Int?
+  uploadedAt     DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  uploadedById   String
+  workflowId     String
+  moduleName     String?
+  uploadedBy     User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  workflow       Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  Answer         Answer?  @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  answerId       String?
+
+  @@index([moduleName])
+  @@index([questionNumber])
+  @@index([uploadedById])
+  @@index([workflowId])
+}
+
+model Lead {
+  id                    String               @id @default(cuid())
+  referralCode          String?
+  fullName              String
+  email                 String
+  mobile                String
+  companyName           String
+  role                  String
+  linkedIn              String?
+  mobilePlatform        String
+  videoPlatform         String
+  preferredContactTimes String
+  timezone              String
+  userType              String
+  status                LeadStatus           @default(NEW)
+  approvedAt            DateTime?
+  rejectedAt            DateTime?
+  approvedByAdminId     String?
+  rejectedByAdminId     String?
+  rejectionReason       String?
+  invitationToken       String?              @unique
+  invitationSentAt      DateTime?
+  invitationExpiresAt   DateTime?
+  invitedByAdminId      String?
+  personalMessage       String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  advData               LeadADVData?
+  companyData           LeadCompanyData?
+  governmentData        LeadGovernmentData?
+  investorData          LeadInvestorData?
+  partnerData           LeadPartnerData?
+  refinancingData       LeadRefinancingData?
+  approvedBy            User?                @relation("ApprovedLeads", fields: [approvedByAdminId], references: [id], onDelete: Cascade)
+  rejectedBy            User?                @relation("RejectedLeads", fields: [rejectedByAdminId], references: [id], onDelete: Cascade)
+  invitedBy             User?                @relation("InvitedLeads", fields: [invitedByAdminId], references: [id], onDelete: Cascade)
+  platformId            String?
+  platform              Platform?            @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([email])
+  @@index([status])
+  @@index([platformId])
+}
+
+model Module {
+  id                     String                   @id @default(cuid())
+  moduleName             String                   @unique
+  description            String?
+  isActive               Boolean                  @default(true)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  workflowModules        WorkflowModule[]
+  forms                  Form[]
+  Answer                 Answer[]
+  ModuleSignatures       ModuleSignatures[]
+  ModuleQuestionTemplate ModuleQuestionTemplate[]
+  WorkflowUpdate         WorkflowUpdate[]
+
+  @@index([isActive])
+  @@index([moduleName])
+}
+
+model ModuleSignatures {
+  id         String @id @default(cuid())
+  moduleId   String
+  workflowId String
+  userId     String
+
+  // Adobe Sign integration fields
+  adobeAgreementId String? // Adobe Sign agreement ID
+  adobeWebhookId   String? // Adobe Sign webhook ID
+  signingUrl       String? // URL for user to sign
+  agreementStatus  AgreementStatus @default(PENDING)
+  signedAt         DateTime? // When the agreement was signed
+  documentUrl      String? // URL to download signed document
+
+  // Adobe Sign OAuth token fields
+  adobeAccessToken    String? // Adobe Sign OAuth access token
+  adobeRefreshToken   String? // Adobe Sign OAuth refresh token
+  adobeTokenExpiresAt DateTime? // When the access token expires
+
+  // Legacy signature field (deprecated)
+  signature String? // Keep for backward compatibility
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  module   Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([adobeAgreementId])
+  @@index([agreementStatus])
+}
+
+model ModuleQuestionTemplate {
+  id        String     @id @default(cuid())
+  moduleId  String
+  questions Question[]
+  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+}
+
+model Form {
+  id         String     @id @default(cuid())
+  questions  Question[]
+  moduleId   String
+  workflowId String
+  module     Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  workflow   Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model Question {
+  id                       String                  @id @default(cuid())
+  question                 String
+  type                     QuestionType
+  uploadable               Boolean
+  metadata                 String?
+  placeholder              String?
+  required                 Boolean
+  conditionalField         String?
+  forms                    Form[]
+  Answer                   Answer[]
+  comments                 QuestionComment[]
+  ModuleQuestionTemplate   ModuleQuestionTemplate? @relation(fields: [moduleQuestionTemplateId], references: [id])
+  moduleQuestionTemplateId String?
+}
+
+enum QuestionType {
+  TEXT
+  TEXTAREA
+  SELECT
+  RADIO
+  SIGNATURE
+  RISK_ASSESSMENT
+}
+
+model Answer {
+  id         String     @id @default(cuid())
+  questionId String
+  userId     String
+  moduleId   String
+  workflowId String
+  answer     String
+  documents  Document[]
+  Question   Question   @relation(fields: [questionId], references: [id])
+  User       User       @relation(fields: [userId], references: [id])
+  Module     Module     @relation(fields: [moduleId], references: [id])
+  Workflow   Workflow   @relation(fields: [workflowId], references: [id])
+}
+
+model QuestionComment {
+  id         String   @id @default(cuid())
+  comment    String   @db.Text
+  questionId String
+  workflowId String
+  userId     String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  User       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  Workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@index([workflowId])
+  @@index([userId])
+  @@index([isRead])
+}
+
+model Organization {
+  id                       String                     @id @default(cuid())
+  name                     String
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  organizationUsers        OrganizationUser[]
+  organizationWorkflows    OrganizationWorkflow[]
+  organizationInvitations  OrganizationInvitation[]
+  users                    User[]
+  platforms                Platform[]
+  OrganizationNotification OrganizationNotification[]
+}
+
+model OrganizationUser {
+  id             String          @id @default(cuid())
+  organizationId String
+  userId         String
+  role           PermissionLevel @default(VIEW)
+  addedBy        String
+  addedAt        DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  addedByUser    User            @relation("OrganizationUser_addedByUser", fields: [addedBy], references: [id])
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User            @relation("OrganizationUser_userIdUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([role])
+  @@index([userId])
+}
+
+model OrganizationWorkflow {
+  id             String       @id @default(cuid())
+  isActive       Boolean      @default(true)
+  customSettings String?
+  status         String       @default("active")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organizationId String
+  workflowId     String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflow       Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  Report         Report[]
+
+  @@unique([organizationId, workflowId])
+  @@index([isActive])
+  @@index([organizationId])
+  @@index([status])
+  @@index([workflowId])
+}
+
+model OrganizationInvitation {
+  id             String                   @id @default(cuid())
+  email          String
+  token          String                   @unique
+  organizationId String
+  invitedBy      String
+  role           PermissionLevel          @default(ADMIN)
+  status         PlatformInvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedByUser  User                     @relation(fields: [invitedBy], references: [id])
+
+  @@index([email])
+  @@index([token])
+  @@index([organizationId])
+  @@index([status])
+}
+
+model OrganizationNotification {
+  id                      String   @id @default(cuid())
+  notificationTitle       String
+  notificationDescription String
+  refLink                 String?
+  notificationRead        Boolean
+  createdAt               DateTime @default(now())
+  organizationId          String
+  platformId              String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([platformId])
+}
+
+model Post {
+  id          Int       @id @default(autoincrement())
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  platformId  String?
+  platform    Platform? @relation(fields: [platformId], references: [id])
+
+  @@index([name])
+}
+
+model Report {
+  id                        String                @id @default(cuid())
+  title                     String
+  description               String?
+  reportType                String
+  dataDecayPercent          Float                 @default(12.5)
+  lowerboundDiscountPercent Float                 @default(30)
+  dataReliancePercent       Float?
+  dataAttributePercent      Float?
+  dataScarcityPercent       Float?
+  dataUniquinessPercent     Float?
+  dataOwnershipPercent      Float?
+  preADVData                String?
+  supplementADVData         String?
+  ADVdata                   String?
+  pdfReportData             String?
+  upperADVRange             String?
+  lowerADVRange             String?
+  bullMQJobId               String?
+  emailId                   String?
+  emailDeliveryError        String?
+  deliveryStatus            DeliveryStatus
+  generatedAt               DateTime              @default(now())
+  generatedById             String
+  generatedBy               User                  @relation(fields: [generatedById], references: [id], onDelete: Cascade)
+  organisationWorkflowId    String?
+  organisationWorkflow      OrganizationWorkflow? @relation(fields: [organisationWorkflowId], references: [id], onDelete: Cascade)
+  Platform                  Platform?             @relation(fields: [platformId], references: [id])
+  platformId                String?
+
+  @@index([organisationWorkflowId])
+  @@index([generatedById])
+  @@index([reportType])
+}
+
+enum DeliveryStatus {
+  NOT_DELIVERED
+  PENDING
+  DELIVERED
+  DELIVERY_FAILED
+}
+
+enum DataValuationReportStatus {
+  PENDING           // Report requested, awaiting generation
+  GENERATING        // Report is being generated
+  GENERATED         // Report generated, awaiting admin review
+  UNDER_REVIEW      // Admin is reviewing/editing
+  APPROVED          // Admin approved, ready for delivery
+  DELIVERED         // Delivered to client
+  CHANGES_REQUESTED // Client requested changes
+  ACCEPTED          // Client accepted the report
+}
+
+model DataValuationReport {
+  id                      String                      @id @default(cuid())
+  title                   String
+  organizationName        String
+
+  // Report sections stored as JSON for admin editing
+  termsAndDisclaimer      String?                     @db.Text
+  brief                   String?                     @db.Text
+  informationPacks        String?                     @db.Text
+  approachValuationResult String?                     @db.Text
+  approachDescription     String?                     @db.Text
+  assumptions             String?                     @db.Text
+  valuationOverview       String?                     @db.Text
+  additionalSections      String?                     @db.Text
+
+  // Extracted Company Data fields
+  companyLegalName        String?
+  companySector           String?
+  companyAcronym          String?
+  companyBrief            String?                     @db.Text
+  valuationReason         String?                     @db.Text // JSON array of reasons
+  dataDriverMetrics       String?                     @db.Text // JSON: CompanyDataMetrics
+  dataUsers               String?                     @db.Text // JSON: CompanyDataUsers
+  dataConsumersProducers  String?                     @db.Text // JSON: DataConsumersProducers
+  costs                   String?                     @db.Text // JSON: DataCosts
+  dataAccessChannels      String?                     @db.Text // JSON: DataAccessChannels
+  websites                String?                     @db.Text // JSON: WebsiteDetails[]
+  aiDataUsage             String?                     @db.Text // JSON: AIDataUsage
+  digitalTwinning         String?                     @db.Text // JSON: DigitalTwinningDetails
+
+  // Valuation Approach Data
+  selectedApproach        String?                     // ValuationApproachName
+  approachReasoning       String?                     @db.Text
+  approachApplicability   String?                     @db.Text
+  ivsStandard             String?
+  approachOverview        String?                     @db.Text
+  basisDescription        String?                     @db.Text
+
+  // Valuation Model Data
+  valuationApproachName   String?
+  valuationDescription    String?                     @db.Text
+  calculationSteps        String?                     @db.Text // JSON: ValuationCalculationStep[]
+
+  // Data Quality Assessment
+  qualityObtainmentMethod String?                     @db.Text
+  dataQualityExcludingDecay Float?
+  dataQualityExplanation  String?                     @db.Text
+  decayAssumptions        String?                     @db.Text
+  dataDecayPercentage     Float?
+  dataDecayScore          Float?
+  decayExplanation        String?                     @db.Text
+  finalDataQuality        Float?
+  finalDataQualityPercentage Float?
+  qualityCalculationExplanation String?               @db.Text
+  adjustedValuation       Float?
+
+  // Holomorphic Encoding (kept as JSON for complexity)
+  holomorphicEncoding     String?                     @db.Text // JSON: DimensionalIntelligenceResult
+
+  // Valuation data from engine
+  valuationAmount         Float?
+  valuationCurrency       String                      @default("USD")
+  valuationMethodology    String?
+  calculatedAt            DateTime?
+  ivsCompliance           String?                     @db.Text // JSON array of IVS standards
+
+  // PDF data
+  pdfReportData           String?                     @db.Text
+
+  // Status and workflow
+  status                  DataValuationReportStatus   @default(PENDING)
+
+  // Client feedback
+  clientFeedback          String?                     @db.Text
+  feedbackAt              DateTime?
+
+  // Timestamps
+  requestedAt             DateTime                    @default(now())
+  generatedAt             DateTime?
+  approvedAt              DateTime?
+  deliveredAt             DateTime?
+  acceptedAt              DateTime?
+
+  // Relationships
+  workflowId              String
+  workflow                Workflow                    @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  requestedById           String
+  requestedBy             User                        @relation("DataValuationReport_requestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  approvedById            String?
+  approvedBy              User?                       @relation("DataValuationReport_approvedBy", fields: [approvedById], references: [id])
+  platformId              String?
+  platform                Platform?                   @relation(fields: [platformId], references: [id])
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([platformId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id                         String                   @id @default(cuid())
+  name                       String?
+  email                      String?                  @unique
+  emailVerified              DateTime?
+  image                      String?
+  firstName                  String?
+  lastName                   String?
+  phoneNumber                String?
+  currency                   String?                  @default("GBP")
+  companyName                String?
+  jobTitle                   String?
+  companyNumber              String?
+  companyAddress             String?
+  password                   String?
+  organizationId             String?
+  isAdmin                    Boolean                  @default(false)
+  accounts                   Account[]
+  auditLogs                  AuditLog[]
+  documents                  Document[]
+  organizationUsersAdded     OrganizationUser[]       @relation("OrganizationUser_addedByUser")
+  organizationUsers          OrganizationUser[]       @relation("OrganizationUser_userIdUser")
+  posts                      Post[]
+  reports                    Report[]
+  sessions                   Session[]
+  organization               Organization?            @relation(fields: [organizationId], references: [id])
+  workflows                  Workflow[]
+  workflowCollaboratorsAdded WorkflowCollaborator[]   @relation("WorkflowCollaborator_addedByUser")
+  workflowCollaborators      WorkflowCollaborator[]   @relation("WorkflowCollaborator_userIdUser")
+  approvedLeads              Lead[]                   @relation("ApprovedLeads")
+  rejectedLeads              Lead[]                   @relation("RejectedLeads")
+  invitedLeads               Lead[]                   @relation("InvitedLeads")
+  Answer                     Answer[]
+  questionComments           QuestionComment[]
+  SuperAdmin                 SuperAdmin?
+  PlatformUser               PlatformUser?
+  PlatformInviters           PlatformInvitation[]     @relation("PlatformInvitation_inviter")
+  PlatformInvitees           PlatformInvitation[]     @relation("PlatformInvitation_invitee")
+  ModuleSignatures           ModuleSignatures[]
+  OrganizationInvitations    OrganizationInvitation[]
+  paymentsCreated            Payment[]                @relation("PaymentCreatedBy")
+  paymentsUpdated            Payment[]                @relation("PaymentLastUpdatedBy")
+  dataValuationReportsRequested DataValuationReport[] @relation("DataValuationReport_requestedBy")
+  dataValuationReportsApproved  DataValuationReport[] @relation("DataValuationReport_approvedBy")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workflow {
+  id                    String                 @id @default(cuid())
+  name                  String
+  description           String?
+  status                String                 @default("active")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  createdById           String
+  isTemplate            Boolean                @default(false)
+  auditLogs             AuditLog[]
+  documents             Document[]
+  organizationWorkflows OrganizationWorkflow[]
+  createdBy             User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  collaborators         WorkflowCollaborator[]
+  workflowModules       WorkflowModule[]
+  workflowUpdates       WorkflowUpdate[]
+  platformId            String?
+  platform              Platform?              @relation(fields: [platformId], references: [id])
+  Answer                Answer[]
+  questionComments      QuestionComment[]
+  ModuleSignatures      ModuleSignatures[]
+  Form                  Form[]
+  payments              Payment[]
+  dataValuationReports  DataValuationReport[]
+
+  @@index([createdById])
+  @@index([isTemplate])
+  @@index([status])
+  @@index([platformId])
+}
+
+model Payment {
+  id                  String        @id @default(cuid())
+  workflowId          String
+  organizationId      String?
+  totalAmount         Float // Total amount to be paid
+  amountPaid          Float         @default(0) // Amount paid so far
+  currency            String        @default("GBP")
+  status              PaymentStatus @default(PENDING)
+  paymentMethod       String? // Bank transfer, etc
+  transactionRef      String? // Bank transaction reference
+  paymentProofUrl     String? // URL to uploaded payment proof document
+  notes               String? // Additional notes from admin
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  createdById         String
+  lastUpdatedById     String?
+  workflow            Workflow      @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  createdBy           User          @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  lastUpdatedBy       User?         @relation("PaymentLastUpdatedBy", fields: [lastUpdatedById], references: [id])
+
+  @@index([workflowId])
+  @@index([status])
+  @@index([organizationId])
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+  CANCELLED
+}
+
+model WorkflowCollaborator {
+  id          String          @id @default(cuid())
+  workflowId  String
+  userId      String
+  permission  PermissionLevel
+  addedBy     String
+  addedAt     DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  addedByUser User            @relation("WorkflowCollaborator_addedByUser", fields: [addedBy], references: [id])
+  user        User            @relation("WorkflowCollaborator_userIdUser", fields: [userId], references: [id], onDelete: Cascade)
+  workflow    Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, userId])
+  @@index([permission])
+  @@index([userId])
+  @@index([workflowId])
+}
+
+model WorkflowModule {
+  id         String               @id @default(cuid())
+  isEnabled  Boolean              @default(true)
+  status     WorkflowModuleStatus @default(NOT_STARTED)
+  progress   Int                  @default(0)
+  settings   String?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  workflowId String
+  moduleId   String
+  module     Module               @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  workflow   Workflow             @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, moduleId])
+  @@index([moduleId])
+  @@index([workflowId])
+}
+
+enum WorkflowModuleStatus {
+  ACTIVE
+  NOT_STARTED
+  PAUSED
+  DISABLED
+}
+
+model WorkflowUpdate {
+  id                String   @id @default(cuid())
+  updateMessage     String
+  updateDescription String?
+  updateRead        Boolean
+  refLink           String?
+  createdAt         DateTime @default(now())
+  workflowId        String
+  moduleId          String?
+  workflow          Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  module            Module?  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([workflowId])
+}
+
+model LeadCompanyData {
+  id                  String  @id @default(cuid())
+  leadId              String  @unique
+  companyWebsite      String?
+  companyIndustry     String?
+  companyHeadquarters String?
+  capitalAmount       String?
+  capitalUse          String?
+  capitalTimeline     String?
+  evaluationTypes     Json?
+  lead                Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadInvestorData {
+  id                      String  @id @default(cuid())
+  leadId                  String  @unique
+  institutionType         String?
+  institutionHeadquarters String?
+  institutionLinkedIn     String?
+  aumRange                String?
+  typicalInvestmentSize   String?
+  targetReturns           String?
+  investmentHorizon       String?
+  preferredSectors        Json?
+  preferredStructures     Json?
+  riskProfile             String?
+  geographicFocus         Json?
+  esgImportance           String?
+  accreditationStatus     String?
+  lead                    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadADVData {
+  id                  String  @id @default(cuid())
+  leadId              String  @unique
+  businessType        String?
+  dataHistory         String?
+  currentValuation    String?
+  valuationMethods    String?
+  dataTypes           String?
+  dataVolume          String?
+  dataQuality         String?
+  dataUsage           String?
+  monetizationStatus  String?
+  revenueFromData     String?
+  investmentReadiness String?
+  dataProtection      String?
+  additionalInfo      String?
+  investmentAmount    String?
+  lead                Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadGovernmentData {
+  id                  String  @id @default(cuid())
+  leadId              String  @unique
+  govEntityName       String?
+  govLevel            String?
+  govDepartment       String?
+  govWebsite          String?
+  govJurisdiction     String?
+  programType         String?
+  programValue        String?
+  programTimeline     String?
+  fundingStructure    String?
+  strategicObjectives Json?
+  departmentalAssets  Json?
+  govAdditionalInfo   String?
+  lead                Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadPartnerData {
+  id                  String  @id @default(cuid())
+  leadId              String  @unique
+  partnerOrganization String?
+  partnerType         String?
+  partnerWebsite      String?
+  partnerHeadquarters String?
+  partnerRevenue      String?
+  partnerCapabilities Json?
+  clientCount         String?
+  geographicReach     Json?
+  integrationOptions  Json?
+  partnershipModel    Json?
+  networkFacilitation Json?
+  sdgPriorities       Json?
+  partnershipVision   String?
+  lead                Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model LeadRefinancingData {
+  id                     String  @id @default(cuid())
+  leadId                 String  @unique
+  portfolioSize          String?
+  assetTypes             Json?
+  refinancingMotivation  String?
+  riskConcerns           Json?
+  existingProtection     String?
+  previousAttempts       String?
+  protectionLevel        String?
+  portfolioStatus        String?
+  refinancingTimeline    String?
+  portfolioGeography     Json?
+  decisionAuthority      String?
+  protectionStructure    Json?
+  urgencyDrivers         Json?
+  additionalRequirements String?
+  lead                   Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model SuperAdmin {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Platform {
+  id            String         @id @default(cuid())
+  name          String
+  domain        String         @unique
+  users         PlatformUser[]
+  organizations Organization[]
+
+  Lead                     Lead[]
+  Post                     Post[]
+  Report                   Report[]
+  Workflow                 Workflow[]
+  PlatformInvitation       PlatformInvitation[]
+  PlatformADVSetting       PlatformADVSetting[]
+  PlatformPaymentSetting   PlatformPaymentSetting[]
+  OrganizationNotification OrganizationNotification[]
+  DataValuationReport      DataValuationReport[]
+}
+
+model PlatformUser {
+  id         String       @id @default(cuid())
+  userId     String       @unique
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       PlatformRole
+  Platform   Platform?    @relation(fields: [platformId], references: [id])
+  platformId String?
+}
+
+model PlatformInvitation {
+  id              String                   @id @default(cuid())
+  email           String
+  inviterId       String
+  inviteeId       String?
+  platformId      String?
+  platformName    String
+  platformDomain  String
+  invitationToken String                   @unique
+  status          PlatformInvitationStatus
+  createdAt       DateTime                 @default(now())
+  expiresAt       DateTime
+  Inviter         User                     @relation("PlatformInvitation_inviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  Invitee         User?                    @relation("PlatformInvitation_invitee", fields: [inviteeId], references: [id])
+  Platform        Platform?                @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@index([platformId])
+  @@index([status])
+  @@index([email])
+}
+
+model PlatformADVSetting {
+  id                  String  @id @default(cuid())
+  platformId          String  @unique
+  enablePreADV        Boolean @default(true)
+  enableADV           Boolean @default(true)
+  enableADVSupplement Boolean @default(true)
+
+  Platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@index([platformId])
+}
+
+model PlatformPaymentSetting {
+  id                String   @id @default(cuid())
+  platformId        String   @unique
+  bankName          String?
+  accountName       String?
+  accountNumber     String?
+  sortCode          String?
+  iban              String?
+  swiftBic          String?
+  paymentReference  String?
+  additionalNotes   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  Platform Platform @relation(fields: [platformId], references: [id], onDelete: Cascade)
+
+  @@index([platformId])
+}
+
+enum PlatformInvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  FAILED
+}
+
+enum PermissionLevel {
+  VIEW
+  EDIT
+  ADMIN
+}
+
+enum LeadStatus {
+  NEW
+  INVITED
+  APPROVED
+  REJECTED
+  CONVERTED
+  FAILED
+}
+
+enum AgreementStatus {
+  PENDING // Agreement created but not yet sent
+  OUT_FOR_SIGNATURE // Agreement sent for signing
+  SIGNED // Agreement completed and signed
+  CANCELLED // Agreement cancelled
+  EXPIRED // Agreement expired without signing
+  FAILED // Agreement creation or processing failed
+}
+
+enum PlatformRole {
+  ADMIN
+  MEMBER
+}
+
+model CommunityLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Step 1: Identity
+  fullName             String
+  email                String   @unique
+  mobileNumber         String
+  linkedInProfile      String?
+  organization         String
+  role                 String
+  location             String
+
+  // Step 2: Domain Expertise
+  primaryIndustry      String
+  yearsOfExperience    String
+  specificFocus        String
+
+  // Step 3: Communication Preferences
+  mobileContactMethod  String
+  videoCallPreference  String
+  timeZone             String
+  preferredContactTime String
+
+  // Step 4: Additional Context
+  additionalContext    String?
+
+  // Vertical Groups Assignment
+  verticalGroups       String[] // Auto-assigned based on industry + sector
+
+  // Vertical Onboarding - Step 1: Bio & Profile
+  profilePhoto         String?
+  bio                  String?
+
+  // Vertical Onboarding - Step 2: Purpose
+  reasonsForJoining    String[]  @default([]) // What brings you to One 2b
+  motivations          String[]  @default([]) // Top 3 motivations (max 3)
+  problemsToSolve      String?
+
+  // Vertical Onboarding - Step 3: Deeper Domain Expertise
+  additionalExpertise  String[]  @default([]) // Up to 5 checkboxes
+  technicalSkills      String?
+  notableAchievements  String?
+  geographicExpertise  String[]  @default([]) // Multiple regions
+
+  // Vertical Onboarding - Step 4: Strengths
+  commercialStrengths  String[]  @default([]) // Top 5
+  personalStrengths    String[]  @default([]) // Top 5
+
+  // Vertical Onboarding - Step 5: What You Can Bring
+  organizationTypes    Json? // {companies: string, infrastructure: string, government: string, etc}
+  strategicConnections String[]  @default([]) // Types of connections
+  hasOpportunities     String? // "yes", "potentially", "no"
+  opportunityDetails   String?
+  interests            String[]  @default([]) // Advisor, partnership, etc
+
+  // Vertical Onboarding - Step 6: Additional Context
+  additionalNotes      String?
+  socialTwitter        String?
+  socialInstagram      String?
+  socialYouTube        String?
+  referralCode         String?
+
+  // Metadata
+  onboardingCompleted  Boolean  @default(false)
+  verticalOnboardingCompleted Boolean @default(false)
+  currentStep          Int      @default(1)
+
+  // Referral tracking
+  referralsMade        Referral[] @relation("ReferralsMade")
+  referralsReceived    Referral[] @relation("ReferredCommunity")
+
+  // Meeting transcripts
+  meetingTranscripts   MeetingTranscript[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([verticalGroups])
+}
+
+model VerticalGroup {
+  id               String   @id @default(cuid())
+  name             String   @unique // e.g., "LONGEVITY & WELLNESS"
+  industries       String[] // Associated industries
+  whatsappLink     String   // WhatsApp community invite link
+  memberCount      Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([name])
+}
+
+model CommunityProjectLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // B1: Project Sponsor Information - Sponsor Company Details
+  legalCompanyName           String
+  companyRegistrationNumber  String
+  dateCompanyFormed          DateTime
+  registeredAddress          String
+  tradingAddress             String?
+  website                    String
+  companyEmail               String   @unique
+
+  // B1: Project Sponsor Information - Primary Contact
+  contactPersonName          String
+  contactPersonRole          String
+  contactPhone               String
+  contactEmail               String
+
+  // B2: Corporate Structure - Ownership & Governance
+  directors                  Json // Array of {name, role, appointmentDate}
+  shareholders               Json // Array of {name, ownershipPercent}
+  ultimateBeneficialOwners   String
+  parentAssociateCompanies   String?
+  managementChangesLast2Years Boolean
+  managementChangeDetails    String?
+
+  // B3: Project Overview
+  projectName                String
+  projectDescription         String
+  projectType                String // Infrastructure Development, Technology Platform, etc.
+  projectLocation            String // Country/Region
+  projectValue               String // €5-10M, €10-25M, etc.
+  projectTimeline            String // 6 months, 12 months, etc.
+  executiveSummary           String
+
+  // B4: Existing Obligations & Risk Profile - Current Bonds & Guarantees
+  hasCurrentBonds            Boolean
+  currentBondTypes           String[] @default([]) // Performance Bond, Bid/Tender Bond, etc.
+  currentBondDetails         String?
+
+  // B4: Personal Guarantees
+  directorsProvidedPGsLast5Years Boolean
+  currentPGsIssued           Boolean
+  currentPGDetails           String?
+
+  // B4: Charges & Debentures
+  hasChargesOrDebentures     Boolean
+  chargesDebenturesDetails   String?
+
+  // B5: IGIS / Bond Requirements
+  instrumentTypeRequired     String // IGIS types, Performance Bond, etc.
+  amountSought               String
+  currencyPreference         String // EUR, USD, GBP, etc.
+  periodDurationRequired     String
+  beneficiary                String?
+
+  // B6: Security Package
+  securityTypes              String[] @default([]) // Data Assets, Real Property, etc.
+  securityDetails            String
+
+  // B7: Financial Information
+  annualRevenue              String
+  ebitda                     String
+  totalAssetsValue           String
+  totalLiabilities           String
+  netWorth                   String
+  auditedFinancialsAvailable String // Yes - Current, Yes - Last Year, etc.
+  creditRating               String? // AAA, AA, A, etc.
+  foundersPersonalInvestment String
+  capitalRaisedAmount        String?
+  epcContractorStatus        String? // identified/appointed
+  landOwnership              String? // own/option
+  planningConsentStatus      String? // yes/no/pending
+
+  // B8: Supporting Documents Required
+  availableDocuments         String[] @default([]) // Checkboxes for documents
+
+  // B9: Additional Information
+  keyRisksAndMitigants       String?
+  otherRelevantInfo          String?
+  referralCode               String?
+
+  // Declaration & Submission
+  declarationName            String?
+  declarationTitle           String?
+  declarationDate            DateTime?
+
+  // Metadata
+  submissionCompleted        Boolean  @default(false)
+  currentStep                Int      @default(1) // Track which section user is on
+  reviewStatus               String?  @default("pending") // pending, under_review, approved, rejected
+  documentsRequested         Boolean  @default(false) // Track if documents have been requested
+  documentsRequestedAt       DateTime? // When documents were requested
+  documentsRequestedBy       String? // Who requested the documents
+  requestedDocumentsList     String[] @default([]) // List of document names requested
+  uploadedDocuments          Json? // {documentName: s3Url or serialized document}
+
+  // Referral tracking
+  referralsReceived          Referral[] @relation("ReferredProject")
+
+  // Meeting transcripts
+  meetingTranscripts         MeetingTranscript[]
+
+  @@index([companyEmail])
+  @@index([createdAt])
+  @@index([projectType])
+  @@index([reviewStatus])
+}
+
+model CommunityCompanyLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A1: Company Profile - Basic Information
+  legalCompanyName          String
+  tradingName               String?
+  companyRegistrationNumber String
+  dateOfIncorporation       DateTime
+  registeredAddress         String
+  website                   String
+  companyEmail              String   @unique
+  companyStage              String // Startup, Growth, Established, Mature, Public Company
+  headquartersLocation      String // Country
+  industrySectors           String[] // Multiple selections
+
+  // A1: Company Overview
+  companyBio                String
+
+  // A2: Impact & SDG Alignment
+  sdgGoals                  String[] // UN SDG Goals
+
+  // A3: Capital Requirements
+  seekingCapital            String // Yes - Primary Focus, Yes - Secondary Interest, Not Currently, Open to Exploring
+  capitalAmountSought       String? // €5-10M, €10-25M, etc.
+  capitalUseOf              String? // Working Capital, Expansion, etc.
+  capitalTimeline           String? // 90 days or less, Q1 2026, etc.
+
+  // A4: Insurance Requirements
+  seekingInsurance          String // Yes - Primary Focus, Yes - Secondary Interest, Not Currently, Open to Exploring
+  insuranceTypeInterest     String? // IGIS, Traditional, Data Asset Protection, etc.
+  currentInsuranceCoverage  String? // None, Basic, Comprehensive, etc.
+  currentInsuranceTypes     String[] // Public Liability, Professional Indemnity, etc.
+
+  // A5: Data Assessment
+  dataCollectionYears       String
+  revenueFromDataPercent    String // <10%, 10-25%, etc.
+  operationsDataReliant     String // 50-70%, 70-85%, etc.
+  dataUniquenessPercent     String
+  dataScarcityPercent       String
+  revenueGeneratingUnits    String // 1, 2-3, 4-6, etc.
+  primaryDataTypes          String[] // Customer/CRM, Transaction/Payment, etc.
+
+  // A6: Services Interest
+  servicesInterest          String[] // IGIS Capital Financing, ADV, etc.
+
+  // A7: Investment Readiness
+  investmentReadiness       String // Yes - €100K+, Yes - up to €100K, Need more info, Not at this time
+
+  // A8: Additional Information
+  specificObjectives        String?
+  howDidYouHear             String?
+  referralCode              String?
+
+  // Declaration
+  declarationName           String?
+  declarationTitle          String?
+  declarationDate           DateTime?
+
+  // Metadata
+  submissionCompleted       Boolean  @default(false)
+  currentStep               Int      @default(1)
+  reviewStatus              String?  @default("pending")
+
+  // Referral tracking
+  referralsReceived         Referral[] @relation("ReferredCompany")
+
+  // Meeting transcripts
+  meetingTranscripts        MeetingTranscript[]
+
+  @@index([companyEmail])
+  @@index([createdAt])
+  @@index([companyStage])
+  @@index([reviewStatus])
+  @@index([seekingCapital])
+  @@index([seekingInsurance])
+}
+
+model Referral {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Referral code - unique for each referral
+  code              String   @unique
+
+  // Who is referring (the community member)
+  referrerId        String
+  referrer          CommunityLead @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+
+  // What is being referred
+  referralType      ReferralType // COMMUNITY_MEMBER, COMPANY, PROJECT
+
+  // Who/what was referred (nullable - filled when the referred entity is created)
+  referredCommunityLeadId  String?
+  referredCommunityLead    CommunityLead? @relation("ReferredCommunity", fields: [referredCommunityLeadId], references: [id], onDelete: SetNull)
+
+  referredCompanyLeadId    String?
+  referredCompanyLead      CommunityCompanyLead? @relation("ReferredCompany", fields: [referredCompanyLeadId], references: [id], onDelete: SetNull)
+
+  referredProjectLeadId    String?
+  referredProjectLead      CommunityProjectLead? @relation("ReferredProject", fields: [referredProjectLeadId], references: [id], onDelete: SetNull)
+
+  // Tier of connection (1 = closest, 3 = farthest)
+  connectionTier    Int      @default(3) // 1, 2, or 3
+
+  // Status of the referral
+  status            ReferralStatus @default(PENDING)
+
+  // Metadata about referred entity (before they sign up)
+  referredName      String?  // Name of person/company being referred
+  referredEmail     String?  // Email of person/company being referred
+  notes             String?  // Optional notes from referrer
+
+  @@index([referrerId])
+  @@index([referralType])
+  @@index([status])
+  @@index([code])
+  @@index([referredCommunityLeadId])
+  @@index([referredCompanyLeadId])
+  @@index([referredProjectLeadId])
+}
+
+enum ReferralType {
+  COMMUNITY_MEMBER
+  COMPANY
+  PROJECT
+}
+
+enum ReferralStatus {
+  PENDING       // Referral code created but not used yet
+  COMPLETED     // Referred entity has signed up
+  CONVERTED     // Referred entity has been approved/onboarded
+  EXPIRED       // Referral code expired or invalid
+}
+
+model MeetingTranscript {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Fireflies meeting identifiers
+  firefliesMeetingId String  @unique // meetingId from Fireflies
+  clientReferenceId  String? // Optional custom reference from upload
+
+  // Meeting metadata
+  title             String
+  date              DateTime
+  dateString        String?
+  duration          Float?   // Duration in seconds
+  meetingLink       String?
+  transcriptUrl     String?
+  audioUrl          String?
+  videoUrl          String?
+
+  // Organizer and host info
+  hostEmail         String?
+  organizerEmail    String   // Email of meeting organizer
+  calendarType      String?
+  calendarId        String?
+
+  // Participants (stored as JSON array)
+  participants      String[] @default([])
+  firefliesUsers    String[] @default([])
+  meetingAttendees  Json?    // Array of {displayName, email, phoneNumber, name, location}
+  meetingAttendance Json?    // Array of {name, join_time, leave_time}
+
+  // Speakers (stored as JSON array)
+  speakers          Json?    // Array of {id, name}
+
+  // Full transcript data (stored as JSON)
+  sentences         Json?    // Array of sentence objects with speaker, text, timestamps
+
+  // Summary and analytics
+  summary           Json?    // Contains keywords, action_items, outline, overview, etc.
+  analytics         Json?    // Contains sentiments, categories, speaker analytics
+
+  // Meeting info
+  meetingInfo       Json?    // Contains fred_joined, silent_meeting, summary_status
+  privacy           String?
+
+  // Relations to community members, companies, and projects
+  communityLeadId   String?
+  communityLead     CommunityLead? @relation(fields: [communityLeadId], references: [id], onDelete: SetNull)
+
+  companyLeadId     String?
+  companyLead       CommunityCompanyLead? @relation(fields: [companyLeadId], references: [id], onDelete: SetNull)
+
+  projectLeadId     String?
+  projectLead       CommunityProjectLead? @relation(fields: [projectLeadId], references: [id], onDelete: SetNull)
+
+  // Processing status
+  processingStatus  MeetingProcessingStatus @default(RECEIVED)
+  processedAt       DateTime?
+  errorMessage      String?
+
+  @@index([firefliesMeetingId])
+  @@index([organizerEmail])
+  @@index([date])
+  @@index([communityLeadId])
+  @@index([companyLeadId])
+  @@index([projectLeadId])
+  @@index([processingStatus])
+  @@index([createdAt])
+}
+
+enum MeetingProcessingStatus {
+  RECEIVED      // Webhook received
+  PROCESSING    // Fetching transcript details from Fireflies
+  MATCHED       // Successfully matched to community member/company/project
+  UNMATCHED     // Could not match to any entity
+  FAILED        // Processing failed
+}
