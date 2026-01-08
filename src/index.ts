@@ -105,7 +105,8 @@ const firefliesWebhook = {
 // Helper function to match organizer email to community member, company, or project
 async function matchMeetingToEntity(organizerEmail: string) {
   // Try to match to community member
-  const communityLead = await db.communityLead.findUnique({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const communityLead = await (db as any).communityLead.findUnique({
     where: { email: organizerEmail },
   });
 
@@ -114,7 +115,8 @@ async function matchMeetingToEntity(organizerEmail: string) {
   }
 
   // Try to match to company (using companyEmail field)
-  const companyLead = await db.communityCompanyLead.findFirst({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const companyLead = await (db as any).communityCompanyLead.findFirst({
     where: { companyEmail: organizerEmail },
   });
 
@@ -123,7 +125,8 @@ async function matchMeetingToEntity(organizerEmail: string) {
   }
 
   // Try to match to project (using companyEmail field - contact email)
-  const projectLead = await db.communityProjectLead.findFirst({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const projectLead = await (db as any).communityProjectLead.findFirst({
     where: { companyEmail: organizerEmail },
   });
 
@@ -354,7 +357,8 @@ const run = async () => {
         }
 
         // Check if we already have this meeting
-        const existing = await db.meetingTranscript.findUnique({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = await (db as any).meetingTranscript.findUnique({
           where: { firefliesMeetingId: meetingId },
         });
 
@@ -368,7 +372,8 @@ const run = async () => {
         }
 
         // Create initial record with RECEIVED status
-        const meetingRecord = await db.meetingTranscript.create({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const meetingRecord = await (db as any).meetingTranscript.create({
           data: {
             firefliesMeetingId: meetingId,
             clientReferenceId: clientReferenceId ?? undefined,
@@ -383,7 +388,8 @@ const run = async () => {
         void (async () => {
           try {
             // Update status to PROCESSING
-            await db.meetingTranscript.update({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (db as any).meetingTranscript.update({
               where: { id: meetingRecord.id },
               data: { processingStatus: MeetingProcessingStatus.PROCESSING },
             });
@@ -395,7 +401,8 @@ const run = async () => {
             const match = await matchMeetingToEntity(transcript.organizerEmail);
 
             // Update record with full transcript data
-            await db.meetingTranscript.update({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (db as any).meetingTranscript.update({
               where: { id: meetingRecord.id },
               data: {
                 title: transcript.title,
@@ -418,9 +425,15 @@ const run = async () => {
                 meetingAttendance: transcript.meetingAttendance
                   ? (transcript.meetingAttendance as any)
                   : undefined,
-                speakers: transcript.speakers ? (transcript.speakers as any) : undefined,
-                sentences: transcript.sentences ? (transcript.sentences as any) : undefined,
-                summary: transcript.summary ? (transcript.summary as any) : undefined,
+                speakers: transcript.speakers
+                  ? (transcript.speakers as any)
+                  : undefined,
+                sentences: transcript.sentences
+                  ? (transcript.sentences as any)
+                  : undefined,
+                summary: transcript.summary
+                  ? (transcript.summary as any)
+                  : undefined,
                 analytics: transcript.analytics
                   ? (transcript.analytics as any)
                   : undefined,
@@ -440,16 +453,16 @@ const run = async () => {
             });
 
             console.log(
-              `Successfully processed meeting ${meetingId}, matched: ${match ? match.type : 'none'}`
+              `Successfully processed meeting ${meetingId}, matched: ${
+                match ? match.type : 'none'
+              }`
             );
           } catch (error) {
-            console.error(
-              `Error processing meeting ${meetingId}:`,
-              error
-            );
+            console.error(`Error processing meeting ${meetingId}:`, error);
 
             // Update record with error status
-            await db.meetingTranscript.update({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (db as any).meetingTranscript.update({
               where: { id: meetingRecord.id },
               data: {
                 processingStatus: MeetingProcessingStatus.FAILED,
