@@ -110,29 +110,29 @@ const GRAPHQL_QUERY = `
       date
       dateString
       duration
-      organizerEmail
-      hostEmail
+      organizer_email
+      host_email
       participants
-      firefliesUsers
-      transcriptUrl
-      audioUrl
-      videoUrl
-      meetingLink
-      calendarType
-      calendarId
+      fireflies_users
+      transcript_url
+      audio_url
+      video_url
+      meeting_link
+      calendar_type
+      calendar_id
       privacy
       speakers {
         id
         name
       }
-      meetingAttendees {
+      meeting_attendees {
         displayName
         email
         phoneNumber
         name
         location
       }
-      meetingAttendance {
+      meeting_attendance {
         name
         join_time
         leave_time
@@ -198,7 +198,7 @@ const GRAPHQL_QUERY = `
           words_per_minute
         }
       }
-      meetingInfo {
+      meeting_info {
         fred_joined
         silent_meeting
         summary_status
@@ -231,18 +231,24 @@ export async function fetchTranscriptFromFireflies(
 
   if (!response.ok) {
     // Log the full error response for debugging
-    console.error('Fireflies API Error Response:', JSON.stringify(data, null, 2));
+    console.error(
+      'Fireflies API Error Response:',
+      JSON.stringify(data, null, 2)
+    );
     throw new Error(
-      `Failed to fetch transcript from Fireflies: ${response.statusText} - ${JSON.stringify(data)}`
+      `Failed to fetch transcript from Fireflies: ${
+        response.statusText
+      } - ${JSON.stringify(data)}`
     );
   }
 
   // Check for GraphQL errors (these can occur even with 200 status)
   if (data.errors) {
-    console.error('Fireflies GraphQL Errors:', JSON.stringify(data.errors, null, 2));
-    throw new Error(
-      `Fireflies GraphQL errors: ${JSON.stringify(data.errors)}`
+    console.error(
+      'Fireflies GraphQL Errors:',
+      JSON.stringify(data.errors, null, 2)
     );
+    throw new Error(`Fireflies GraphQL errors: ${JSON.stringify(data.errors)}`);
   }
 
   if (!data.data?.transcript) {
