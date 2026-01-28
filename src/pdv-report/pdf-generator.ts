@@ -435,11 +435,6 @@ export async function generateSupplementaryPDFClient(
     // Force a complete render by triggering update
     chart.update("none");
 
-    // Wait for render to complete (setTimeout for Node.js compatibility)
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
     // Additional timeout to ensure rendering is complete
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
