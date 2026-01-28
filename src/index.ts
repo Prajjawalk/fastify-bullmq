@@ -176,8 +176,11 @@ async function matchMeetingToEntity(organizerEmail: string) {
 }
 
 const run = async () => {
+  // Create emitter first - needed by both queue processors
+  const myEmitter = new EventEmitter();
+
   const emailQueue = createQueue('EmailQueue');
-  await setupQueueProcessor(emailQueue.name);
+  await setupQueueProcessor(emailQueue.name, myEmitter);
 
   const pdvReportQueue = createQueue('PDVReportQueue');
 
@@ -185,8 +188,6 @@ const run = async () => {
     bodyLimit: 10485760, // Sets the global body limit to 10 MB
     logger: true,
   });
-
-  const myEmitter = new EventEmitter();
 
   // Setup PDV report worker (needs emailQueue and emitter for post-processing)
   await setupPDVReportProcessor(pdvReportQueue.name, emailQueue, myEmitter);
