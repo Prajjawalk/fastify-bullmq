@@ -8,7 +8,11 @@ import {
   type PDVReportJobResult,
 } from './pdv-report/worker';
 import EventEmitter from 'events';
-import { db } from './db';
+import { db as prismaDb } from './db';
+
+// Type assertion to bypass dts-cli's outdated TypeScript (4.9.5) not recognizing Prisma 6 types
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = prismaDb as any;
 
 const connection: ConnectionOptions = {
   host: env.REDISHOST,
@@ -58,7 +62,7 @@ export const setupQueueProcessor = async (
         });
 
         // Update report with delivery success - directly in DB instead of webhook
-        const report = await db.report.update({
+        const report = await (db as any).report.update({
           where: { id: data.reportId },
           data: {
             emailId: result.MessageID,
@@ -78,10 +82,11 @@ export const setupQueueProcessor = async (
         const platformId = String(report.platformId);
 
         // Create notification in DB
-        await db.organizationNotification.create({
+        await (db as any).organizationNotification.create({
           data: {
             notificationTitle: 'PDV Report Successfully Delivered',
-            notificationDescription: 'PDV report has been delivered to your email',
+            notificationDescription:
+              'PDV report has been delivered to your email',
             refLink: '',
             notificationRead: false,
             organizationId,
@@ -92,7 +97,8 @@ export const setupQueueProcessor = async (
         // Send real-time notification via SSE
         emitter.emit(`notificationEvent_${platformId}_${organizationId}`, {
           notificationTitle: 'PDV Report Successfully Delivered',
-          notificationDescription: 'PDV report has been delivered to your email',
+          notificationDescription:
+            'PDV report has been delivered to your email',
           refLink: '',
           notificationRead: 'false',
           organizationId,
@@ -105,7 +111,7 @@ export const setupQueueProcessor = async (
         return { jobId: job.id, messageId: result.MessageID };
       } catch (e) {
         // Update report with delivery failure - directly in DB instead of webhook
-        await db.report.update({
+        await (db as any).report.update({
           where: { id: data.reportId },
           data: {
             deliveryStatus: 'DELIVERY_FAILED',
@@ -114,7 +120,10 @@ export const setupQueueProcessor = async (
           },
         });
 
-        console.error(`❌ Email delivery failed for report ${data.reportId}:`, e);
+        console.error(
+          `❌ Email delivery failed for report ${data.reportId}:`,
+          e
+        );
         throw e; // Re-throw to mark job as failed
       }
     },
@@ -149,7 +158,7 @@ export const setupPDVReportProcessor = async (
           );
 
           // Update the report with the email job ID
-          await db.report.update({
+          await (db as any).report.update({
             where: { id: jobData.reportId },
             data: { bullMQJobId: emailJob.id },
           });
@@ -170,7 +179,7 @@ export const setupPDVReportProcessor = async (
         );
 
         // Create notification in DB
-        await db.organizationNotification.create({
+        await (db as any).organizationNotification.create({
           data: {
             notificationTitle: 'PDV Report Generated',
             notificationDescription:

@@ -1,7 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../env';
-import { db } from '../db';
+import { db as prismaDb } from '../db';
 import { generateUnifiedADVPDFClient } from './pdf-generator';
+
+// Type assertion to bypass dts-cli's outdated TypeScript (4.9.5) not recognizing Prisma 6 types
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = prismaDb as any;
 
 // Types for job data
 export interface PDVReportJobData {
@@ -34,7 +38,7 @@ async function callClaude(
   });
 
   const textBlock = message.content.find((block) => block.type === 'text');
-  return textBlock?.text ?? '';
+  return textBlock && 'text' in textBlock ? textBlock.text : '';
 }
 
 // Helper to extract JSON from Claude's response
