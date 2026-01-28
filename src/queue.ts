@@ -2,6 +2,12 @@ import { ConnectionOptions, Queue, Worker } from 'bullmq';
 
 import { env } from './env';
 import { ServerClient } from 'postmark';
+import {
+  processPDVReportJob,
+  type PDVReportJobData,
+  type PDVReportJobResult,
+} from './pdv-report/worker';
+import EventEmitter from 'events';
 
 const connection: ConnectionOptions = {
   host: env.REDISHOST,
@@ -59,5 +65,85 @@ export const setupQueueProcessor = async (queueName: string) => {
       }
     },
     { connection }
+  );
+};
+
+// PDV Report Queue processor
+export const setupPDVReportProcessor = async (
+  pdvQueueName: string,
+  emailQueue: Queue,
+  emitter: EventEmitter
+) => {
+  new Worker(
+    pdvQueueName,
+    async (job) => {
+      const jobData = job.data as PDVReportJobData;
+      console.log(
+        `🔄 Processing PDV report job ${job.id} for ${jobData.orgName}`
+      );
+
+      try {
+        const result: PDVReportJobResult = await processPDVReportJob(jobData);
+
+        const { db: dbClient } = await import('./db');
+
+        if (result.success && result.emailData) {
+          // Schedule email delivery via the existing EmailQueue with 5-minute delay
+          const emailJob = await emailQueue.add(
+            'Email',
+            result.emailData,
+            { delay: 300000 }
+          );
+          console.log(
+            `📧 Email job ${emailJob.id} scheduled for report ${jobData.reportId}`
+          );
+
+          // Update the report with the email job ID
+          await dbClient.report.update({
+            where: { id: jobData.reportId },
+            data: { bullMQJobId: emailJob.id },
+          });
+        }
+
+        // Send notification that report generation is complete
+        emitter.emit(
+          `notificationEvent_${jobData.platformId}_${jobData.organizationId}`,
+          {
+            notificationTitle: 'PDV Report Generated',
+            notificationDescription:
+              'Your PDV report has been generated successfully. Email delivery has been scheduled.',
+            refLink: '',
+            notificationRead: 'false',
+            organizationId: jobData.organizationId,
+            platformId: jobData.platformId,
+          }
+        );
+
+        // Create notification in DB
+        await dbClient.organizationNotification.create({
+          data: {
+            notificationTitle: 'PDV Report Generated',
+            notificationDescription:
+              'Your PDV report has been generated successfully. Email delivery has been scheduled.',
+            refLink: '',
+            notificationRead: false,
+            organizationId: jobData.organizationId,
+            platformId: String(jobData.platformId),
+          },
+        });
+
+        return result;
+      } catch (error) {
+        console.error(
+          `❌ PDV report job ${job.id} failed:`,
+          error
+        );
+        throw error;
+      }
+    },
+    {
+      connection,
+      concurrency: 2, // Process up to 2 PDV reports at a time
+    }
   );
 };

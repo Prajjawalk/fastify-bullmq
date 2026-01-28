@@ -3,7 +3,7 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { FastifyAdapter } from '@bull-board/fastify';
 import fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import { env } from './env';
-import { createQueue, setupQueueProcessor } from './queue';
+import { createQueue, setupQueueProcessor, setupPDVReportProcessor } from './queue';
 import { FromSchema } from 'json-schema-to-ts';
 import EventEmitter from 'events';
 import fastifySSE from '@fastify/sse';
@@ -92,6 +92,44 @@ const notification = {
   ],
 } as const;
 
+const pdvReportJob = {
+  type: 'object',
+  properties: {
+    reportId: { type: 'string' },
+    orgName: { type: 'string' },
+    workflowId: { type: 'string' },
+    reportType: { type: 'string' },
+    userEmail: { type: 'string' },
+    platformId: { type: 'string' },
+    organizationId: { type: 'string' },
+    orgWorkflowId: { type: 'string' },
+    subdomain: { type: 'string' },
+    enableADV: { type: 'boolean' },
+    pdvAnswers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          question: { type: 'string' },
+          answer: { type: 'string' },
+        },
+      },
+    },
+  },
+  required: [
+    'reportId',
+    'orgName',
+    'workflowId',
+    'reportType',
+    'userEmail',
+    'organizationId',
+    'orgWorkflowId',
+    'subdomain',
+    'enableADV',
+    'pdvAnswers',
+  ],
+} as const;
+
 const firefliesWebhook = {
   type: 'object',
   properties: {
@@ -141,12 +179,17 @@ const run = async () => {
   const emailQueue = createQueue('EmailQueue');
   await setupQueueProcessor(emailQueue.name);
 
+  const pdvReportQueue = createQueue('PDVReportQueue');
+
   const server = fastify({
     bodyLimit: 10485760, // Sets the global body limit to 10 MB
     logger: true,
   });
 
   const myEmitter = new EventEmitter();
+
+  // Setup PDV report worker (needs emailQueue and emitter for post-processing)
+  await setupPDVReportProcessor(pdvReportQueue.name, emailQueue, myEmitter);
 
   // Register plugins
   void server.register(require('@fastify/cookie'));
@@ -161,7 +204,7 @@ const run = async () => {
   // Register BullBoard
   const serverAdapter = new FastifyAdapter();
   createBullBoard({
-    queues: [new BullMQAdapter(emailQueue)],
+    queues: [new BullMQAdapter(emailQueue), new BullMQAdapter(pdvReportQueue)],
     serverAdapter,
   });
   serverAdapter.setBasePath('/ui');
@@ -322,6 +365,41 @@ const run = async () => {
         reply.send({
           ok: false,
           error: e,
+        });
+      }
+    }
+  );
+
+  // PDV Report generation job endpoint
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/add-pdv-report-job',
+    {
+      schema: {
+        body: pdvReportJob,
+      },
+    },
+    async (
+      req: FastifyRequest<{ Body: FromSchema<typeof pdvReportJob> }>,
+      reply: FastifyReply
+    ) => {
+      const body = req.body;
+      try {
+        const job = await pdvReportQueue.add('PDVReport', body);
+
+        console.log(
+          `📋 PDV report job ${job.id} queued for ${body.orgName} (report: ${body.reportId})`
+        );
+
+        reply.send({
+          ok: true,
+          jobId: job.id,
+        });
+      } catch (e) {
+        console.error('Error adding PDV report job:', e);
+        reply.send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
         });
       }
     }

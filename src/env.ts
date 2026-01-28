@@ -13,6 +13,7 @@ export const env = envsafe({
   }),
   AUTH_POSTMARK_KEY: str(),
   AUTH_SECRET: str(),
+  ANTHROPIC_API_KEY: str(),
   DATABASE_URL: url(),
   FIREFLIES_API_KEY: str(),
   FIREFLIES_WEBHOOK_SECRET: str({

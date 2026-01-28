@@ -54,8 +54,9 @@ model Document {
   id             String   @id @default(cuid())
   filename       String
   originalName   String
-  fileData       String?   @db.Text // Base64 encoded file content
+  fileData       String?   @db.Text // Deprecated: Base64 encoded file content (legacy)
   filePath       String?  // Deprecated: kept for backward compatibility
+  s3Key          String?  // S3 object key for file storage
   fileSize       Int
   mimeType       String
   questionNumber Int?
@@ -73,6 +74,7 @@ model Document {
   @@index([questionNumber])
   @@index([uploadedById])
   @@index([workflowId])
+  @@index([s3Key])
 }
 
 model Lead {
@@ -196,11 +198,14 @@ model Question {
   placeholder              String?
   required                 Boolean
   conditionalField         String?
+  questionOrder            Int                     @default(0)
   forms                    Form[]
   Answer                   Answer[]
   comments                 QuestionComment[]
   ModuleQuestionTemplate   ModuleQuestionTemplate? @relation(fields: [moduleQuestionTemplateId], references: [id])
   moduleQuestionTemplateId String?
+
+  @@index([questionOrder])
 }
 
 enum QuestionType {
@@ -210,6 +215,7 @@ enum QuestionType {
   RADIO
   SIGNATURE
   RISK_ASSESSMENT
+  DATA_GOVERNANCE
 }
 
 model Answer {
@@ -266,6 +272,13 @@ model OrganizationUser {
   addedBy        String
   addedAt        DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+
+  // Onboarding fields
+  memberRoles         String[]  @default([])    // ["C-Suite", "Executive", etc.]
+  areasOfInterest     String[]  @default([])    // ["Data Management", "Analytics", etc.]
+  onboardingCompleted Boolean   @default(false)
+  onboardingData      Json?                      // Store ADV questionnaire answers
+
   addedByUser    User            @relation("OrganizationUser_addedByUser", fields: [addedBy], references: [id])
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User            @relation("OrganizationUser_userIdUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -550,6 +563,7 @@ model User {
   paymentsUpdated            Payment[]                @relation("PaymentLastUpdatedBy")
   dataValuationReportsRequested DataValuationReport[] @relation("DataValuationReport_requestedBy")
   dataValuationReportsApproved  DataValuationReport[] @relation("DataValuationReport_approvedBy")
+  firefliesApiKeys           FirefliesApiKey[]
 }
 
 model VerificationToken {
@@ -584,6 +598,7 @@ model Workflow {
   Form                  Form[]
   payments              Payment[]
   dataValuationReports  DataValuationReport[]
+  moduleBandingCache    ModuleBandingCache[]
 
   @@index([createdById])
   @@index([isTemplate])
@@ -943,13 +958,13 @@ model CommunityLead {
   // Step 2: Domain Expertise
   primaryIndustry      String
   yearsOfExperience    String
-  specificFocus        String
+  specificFocus        String[]  @default([]) // Changed to array for multi-select
 
   // Step 3: Communication Preferences
   mobileContactMethod  String
   videoCallPreference  String
   timeZone             String
-  preferredContactTime String
+  preferredContactTime String[]  @default([]) // Changed to array for multi-select
 
   // Step 4: Additional Context
   additionalContext    String?
@@ -1139,8 +1154,9 @@ model CommunityCompanyLead {
   // A1: Company Profile - Basic Information
   legalCompanyName          String
   tradingName               String?
-  companyRegistrationNumber String
-  dateOfIncorporation       DateTime
+  companyRegistrationNumber String? // Made optional
+  dateOfIncorporation       DateTime? // Made optional
+  yearsOfOperation          String? // Added new field
   registeredAddress         String
   website                   String
   companyEmail              String   @unique
@@ -1157,7 +1173,7 @@ model CommunityCompanyLead {
   // A3: Capital Requirements
   seekingCapital            String // Yes - Primary Focus, Yes - Secondary Interest, Not Currently, Open to Exploring
   capitalAmountSought       String? // €5-10M, €10-25M, etc.
-  capitalUseOf              String? // Working Capital, Expansion, etc.
+  capitalUseOf              String[] @default([]) // Changed to array for multi-select - Working Capital, Expansion, etc.
   capitalTimeline           String? // 90 days or less, Q1 2026, etc.
 
   // A4: Insurance Requirements
@@ -1344,4 +1360,41 @@ enum MeetingProcessingStatus {
   MATCHED       // Successfully matched to community member/company/project
   UNMATCHED     // Could not match to any entity
   FAILED        // Processing failed
+}
+
+model FirefliesApiKey {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Encrypted API key
+  encryptedApiKey   String   // Encrypted Fireflies API key
+
+  // Key metadata
+  name              String   // Friendly name for the key (e.g., "Sales Team Key")
+  description       String?  // Optional description
+
+  // Status and validity
+  isActive          Boolean  @default(true)
+  lastUsedAt        DateTime?
+
+  // Created by
+  createdById       String
+  createdBy         User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model ModuleBandingCache {
+  id          String   @id @default(cuid())
+  workflowId  String
+  moduleType  String   // "DATA_DUE_DILIGENCE" or "DATA_GOVERNANCE"
+  bandingData String   @db.Text // JSON string of banding analysis result
+  generatedAt DateTime @default(now())
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([moduleType])
+  @@index([generatedAt])
 }
