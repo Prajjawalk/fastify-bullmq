@@ -104,13 +104,19 @@ async function callClaude(
     console.log(`📦 [Claude API] Block ${index}: type=${block.type}`);
     if (block.type === 'text' && 'text' in block) {
       console.log(`📄 [Claude API] Text block length: ${block.text.length} characters`);
-    } else if (block.type === 'tool_use') {
+    } else if (block.type === 'tool_use' || block.type === 'server_tool_use') {
       console.log(`🔧 [Claude API] Tool use: ${JSON.stringify(block)}`);
     }
   });
 
-  const textBlock = message.content.find((block) => block.type === 'text');
-  let response = textBlock && 'text' in textBlock ? textBlock.text : '';
+  // IMPORTANT: Concatenate ALL text blocks, not just the first one!
+  // When using web_search, Claude returns multiple text blocks spread across the response
+  const textBlocks = message.content.filter((block) => block.type === 'text');
+  let response = textBlocks
+    .map((block) => ('text' in block ? block.text : ''))
+    .join('');
+
+  console.log(`📊 [Claude API] Found ${textBlocks.length} text blocks, concatenated length: ${response.length} characters`);
 
   console.log(`\n📥 [Claude API] RAW RESPONSE for ${metricName}:`);
   console.log(`${'─'.repeat(60)}`);
