@@ -3,7 +3,11 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { FastifyAdapter } from '@bull-board/fastify';
 import fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import { env } from './env';
-import { createQueue, setupQueueProcessor, setupPDVReportProcessor } from './queue';
+import {
+  createQueue,
+  setupQueueProcessor,
+  setupPDVReportProcessor,
+} from './queue';
 import { FromSchema } from 'json-schema-to-ts';
 import EventEmitter from 'events';
 import fastifySSE from '@fastify/sse';
@@ -86,7 +90,6 @@ const notification = {
     'notificationTitle',
     'notificationDescription',
     'notificationRead',
-    'createdAt',
     'organizationId',
     'platformId',
   ],
@@ -474,8 +477,10 @@ const run = async () => {
             });
 
             // Wait for Fireflies to fully process the transcript (30 seconds)
-            console.log(`Waiting 30 seconds before fetching transcript for meeting ${meetingId}...`);
-            await new Promise(resolve => setTimeout(resolve, 30000));
+            console.log(
+              `Waiting 30 seconds before fetching transcript for meeting ${meetingId}...`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 30000));
 
             // Fetch full transcript from Fireflies
             const transcript = await fetchTranscriptFromFireflies(meetingId);
