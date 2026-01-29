@@ -149,10 +149,19 @@ ${accumulatedContext}
 
 Estimate the data reliance percentage for ${orgName}. Data reliance measures how dependent the company's operations, revenue, and competitive advantage are on data assets.
 
-Provide:
-1. A specific percentage estimate (e.g., "75%")
-2. Detailed analysis explaining the estimate
-3. Key factors that influence this percentage`
+Provide a COMPREHENSIVE response with:
+1. **Percentage Estimate**: A specific percentage estimate (e.g., "75%")
+
+2. **Detailed Analysis** (around 1-2 paragraphs):
+   - How data drives their core business operations
+   - Revenue streams that depend on data
+   - Decision-making processes that rely on data
+   - Operational dependencies on data infrastructure
+
+3. **Key Factors**: List and explain 5-7 specific factors that influence this percentage for ${orgName}
+
+Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 2000 }
   );
   accumulatedContext += `\n\n--- Data Reliance Analysis ---\n${dataReliance}`;
 
@@ -164,10 +173,24 @@ ${accumulatedContext}
 
 Estimate the data attribute percentage for ${orgName}. Data attribute measures what percentage of the company's business value can be directly attributed to their data assets.
 
-Provide:
-1. A specific percentage estimate (e.g., "70%")
-2. Detailed analysis explaining the estimate
-3. How this relates to their data reliance`
+Provide a COMPREHENSIVE response with:
+1. **Percentage Estimate**: A specific percentage estimate (e.g., "70%")
+
+2. **Detailed Analysis** (around 1-2 paragraphs):
+   - How data directly contributes to revenue generation
+   - Products or services that are data-driven
+   - Customer value derived from data capabilities
+   - Intellectual property value in data
+   
+
+3. **Relationship to Data Reliance**: Explain how the data attribute percentage relates to their data reliance (${
+      extractPercentageFromText(dataReliance) ?? 'previously estimated'
+    }%)
+
+4. **Value Attribution Breakdown**: Break down the attribution across different business areas
+
+Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 2000 }
   );
   accumulatedContext += `\n\n--- Data Attribute Analysis ---\n${dataAttribute}`;
 
@@ -179,10 +202,27 @@ ${accumulatedContext}
 
 Estimate the data uniqueness percentage for ${orgName}. Data uniqueness measures how unique and proprietary the company's data assets are compared to what competitors or the market can access.
 
-Provide:
-1. A specific percentage estimate (e.g., "60%")
-2. Detailed analysis explaining the estimate
-3. What makes their data unique or common`
+Provide a COMPREHENSIVE response with:
+1. **Percentage Estimate**: A specific percentage estimate (e.g., "60%")
+
+2. **Detailed Analysis** (around 1-2 paragraphs):
+   - Proprietary data sources and collection methods
+   - Unique data types that competitors cannot access
+   - Data derived from exclusive partnerships or relationships
+   - Customer or user-generated unique data
+
+3. **Uniqueness Factors**:
+   - What makes their data different from competitors
+   - Barriers preventing competitors from replicating this data
+   - Time-based advantages in data accumulation
+
+4. **Commonality Assessment**:
+   - Data that is similar to industry standards
+   - Publicly available data components
+   - Shared industry data
+
+Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 2000 }
   );
   accumulatedContext += `\n\n--- Data Uniqueness Analysis ---\n${dataUniqueness}`;
 
@@ -194,10 +234,26 @@ ${accumulatedContext}
 
 Estimate the data scarcity percentage for ${orgName}. Data scarcity measures how rare or difficult to replicate the company's data assets are in the market.
 
-Provide:
-1. A specific percentage estimate (e.g., "55%")
-2. Detailed analysis explaining the estimate
-3. Factors that contribute to or reduce scarcity`
+Provide a COMPREHENSIVE response with:
+1. **Percentage Estimate**: A specific percentage estimate (e.g., "55%")
+
+2. **Detailed Analysis** (around 1-2 paragraphs):
+   - Data that is inherently rare in the market
+   - Time and cost barriers to collecting similar data
+   - Regulatory or access barriers that create scarcity
+   
+3. **Scarcity Factors**:
+   - Market conditions that create data scarcity
+   - Technical barriers to data replication
+   - Economic factors affecting data availability
+
+4. **Abundance Assessment**:
+   - Data that is commonly available
+   - Data that can be purchased or licensed
+   - Data that competitors can easily obtain
+
+Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 2000 }
   );
   accumulatedContext += `\n\n--- Data Scarcity Analysis ---\n${dataScarcity}`;
 
@@ -209,10 +265,30 @@ ${accumulatedContext}
 
 Estimate the data ownership percentage for ${orgName}. Data ownership measures what percentage of their data assets they fully own and control, versus data that is licensed, shared, or has usage restrictions.
 
-Provide:
-1. A specific percentage estimate (e.g., "80%")
-2. Detailed analysis explaining the estimate
-3. Ownership structure and any limitations`
+Provide a COMPREHENSIVE response with:
+1. **Percentage Estimate**: A specific percentage estimate (e.g., "80%")
+
+2. **Detailed Analysis** (around 1-2 paragraphs):
+   - Data assets that are fully owned and controlled
+   - First-party data collection and ownership
+   - Licensed or third-party data dependencies
+   - Data partnership arrangements and shared data
+   - Legal and contractual ownership considerations
+   - Geographic and regulatory ownership implications
+
+3. **Ownership Structure**:
+   - Breakdown of owned vs licensed vs shared data
+   - Key data licensing agreements or dependencies
+   - Strategic importance of proprietary data
+
+4. **Limitations and Risks**:
+   - Usage restrictions on certain data
+   - Contractual limitations
+   - Regulatory constraints on data use
+   - Risks from data ownership gaps
+
+Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 2000 }
   );
   accumulatedContext += `\n\n--- Data Ownership Analysis ---\n${dataOwnership}`;
 

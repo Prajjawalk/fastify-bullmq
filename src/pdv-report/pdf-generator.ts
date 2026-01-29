@@ -22,6 +22,10 @@ Chart.register(
   Legend,
 );
 
+// Set global default font for Chart.js (important for node-canvas)
+Chart.defaults.font.family = "Arial, Helvetica, sans-serif";
+Chart.defaults.font.size = 12;
+
 // Pixel conversion constants (1mm ≈ 3.78px at 96 DPI)
 const PX_PER_MM = 3.78;
 const PAGE_WIDTH_PX = 210 * PX_PER_MM; // 793.7px
@@ -394,7 +398,7 @@ export async function generateSupplementaryPDFClient(
     const orgValues = sanitizeValues(data.radarChartData.organizationValues, categories.length);
     const sectorValues = sanitizeValues(data.radarChartData.sectorValues, categories.length);
 
-    // Create chart with animation disabled
+    // Create chart with animation disabled and explicit font settings for node-canvas
     const chart = new Chart(canvas, {
       type: "radar",
       data: {
@@ -425,10 +429,13 @@ export async function generateSupplementaryPDFClient(
           title: {
             display: true,
             text: "Competitive Position Comparison",
-            font: { size: 16 },
+            font: { size: 16, family: "Arial, Helvetica, sans-serif" },
           },
           legend: {
             position: "bottom",
+            labels: {
+              font: { size: 12, family: "Arial, Helvetica, sans-serif" },
+            },
           },
         },
         scales: {
@@ -438,10 +445,12 @@ export async function generateSupplementaryPDFClient(
             min: 0,
             ticks: {
               stepSize: 20,
+              font: { size: 10, family: "Arial, Helvetica, sans-serif" },
             },
             pointLabels: {
               font: {
                 size: 12,
+                family: "Arial, Helvetica, sans-serif",
               },
             },
           },
@@ -1427,7 +1436,7 @@ export async function generateUnifiedADVPDFClient(
       const orgChartValues = sanitizeChartValues(supplementaryData.radarChartData.organizationValues, categories.length);
       const sectorChartValues = sanitizeChartValues(supplementaryData.radarChartData.sectorValues, categories.length);
 
-      // Create chart with animation disabled
+      // Create chart with animation disabled and explicit font settings for node-canvas
       const chart = new Chart(canvas, {
         type: "radar",
         data: {
@@ -1458,10 +1467,13 @@ export async function generateUnifiedADVPDFClient(
             title: {
               display: true,
               text: "Competitive Position Comparison",
-              font: { size: 16 },
+              font: { size: 16, family: "Arial, Helvetica, sans-serif" },
             },
             legend: {
               position: "bottom",
+              labels: {
+                font: { size: 12, family: "Arial, Helvetica, sans-serif" },
+              },
             },
           },
           scales: {
@@ -1471,10 +1483,12 @@ export async function generateUnifiedADVPDFClient(
               min: 0,
               ticks: {
                 stepSize: 20,
+                font: { size: 10, family: "Arial, Helvetica, sans-serif" },
               },
               pointLabels: {
                 font: {
                   size: 12,
+                  family: "Arial, Helvetica, sans-serif",
                 },
               },
             },
