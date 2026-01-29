@@ -77,6 +77,7 @@ interface SupplementaryData {
   radarChartData: {
     categories?: string[];
     "data metrics"?: string[]; // Alternative field name from ChatGPT
+    dataMetrics?: string[]; // Field name from Claude
     organizationValues: number[];
     sectorValues: number[];
   };
@@ -369,11 +370,29 @@ export async function generateSupplementaryPDFClient(
   try {
     const canvas = createCanvas(600, 600);
 
-    // Get categories from either field name
+    // Get categories from any of the possible field names
     const categories =
       data.radarChartData.categories ??
+      data.radarChartData.dataMetrics ??
       data.radarChartData["data metrics"] ??
-      [];
+      ["Data Reliance", "Data Attribution", "Data Uniqueness", "Data Scarcity", "Data Ownership"];
+
+    // Validate and sanitize chart data values - ensure they're valid numbers
+    const sanitizeValues = (values: number[] | undefined, expectedLength: number): number[] => {
+      if (!values || !Array.isArray(values) || values.length === 0) {
+        // Return default values if data is missing
+        return Array(expectedLength).fill(50);
+      }
+      return values.map((v) => {
+        if (typeof v !== "number" || isNaN(v)) return 50;
+        if (v < 0) return 0;
+        if (v > 100) return 100;
+        return v;
+      });
+    };
+
+    const orgValues = sanitizeValues(data.radarChartData.organizationValues, categories.length);
+    const sectorValues = sanitizeValues(data.radarChartData.sectorValues, categories.length);
 
     // Create chart with animation disabled
     const chart = new Chart(canvas, {
@@ -383,15 +402,15 @@ export async function generateSupplementaryPDFClient(
         datasets: [
           {
             label: orgName,
-            data: data.radarChartData.organizationValues,
+            data: orgValues,
             borderColor: "rgb(37, 99, 235)",
             backgroundColor: "rgba(37, 99, 235, 0.2)",
             pointBackgroundColor: "rgb(37, 99, 235)",
             pointBorderColor: "#fff",
           },
           {
-            label: data.sectorName,
-            data: data.radarChartData.sectorValues,
+            label: data.sectorName ?? "Sector Average",
+            data: sectorValues,
             borderColor: "rgb(34, 197, 94)",
             backgroundColor: "rgba(34, 197, 94, 0.2)",
             pointBackgroundColor: "rgb(34, 197, 94)",
@@ -401,9 +420,7 @@ export async function generateSupplementaryPDFClient(
       },
       options: {
         responsive: false,
-        animation: {
-          duration: 0, // Completely disable all animations
-        },
+        animation: false, // Completely disable all animations
         plugins: {
           title: {
             display: true,
@@ -432,11 +449,12 @@ export async function generateSupplementaryPDFClient(
       },
     });
 
-    // Force a complete render by triggering update
+    // Force a complete render
+    chart.draw();
     chart.update("none");
 
-    // Additional timeout to ensure rendering is complete
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Shorter timeout - chart.js with animation disabled should render immediately
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Get image data from canvas with maximum quality
     const chartImage = canvas.toDataURL("image/png", 1.0);
@@ -1385,11 +1403,29 @@ export async function generateUnifiedADVPDFClient(
     try {
       const canvas = createCanvas(600, 600);
 
-      // Get categories from either field name
+      // Get categories from any of the possible field names
       const categories =
         supplementaryData.radarChartData.categories ??
+        supplementaryData.radarChartData.dataMetrics ??
         supplementaryData.radarChartData["data metrics"] ??
-        [];
+        ["Data Reliance", "Data Attribution", "Data Uniqueness", "Data Scarcity", "Data Ownership"];
+
+      // Validate and sanitize chart data values - ensure they're valid numbers
+      const sanitizeChartValues = (values: number[] | undefined, expectedLength: number): number[] => {
+        if (!values || !Array.isArray(values) || values.length === 0) {
+          // Return default values if data is missing
+          return Array(expectedLength).fill(50);
+        }
+        return values.map((v) => {
+          if (typeof v !== "number" || isNaN(v)) return 50;
+          if (v < 0) return 0;
+          if (v > 100) return 100;
+          return v;
+        });
+      };
+
+      const orgChartValues = sanitizeChartValues(supplementaryData.radarChartData.organizationValues, categories.length);
+      const sectorChartValues = sanitizeChartValues(supplementaryData.radarChartData.sectorValues, categories.length);
 
       // Create chart with animation disabled
       const chart = new Chart(canvas, {
@@ -1399,15 +1435,15 @@ export async function generateUnifiedADVPDFClient(
           datasets: [
             {
               label: orgName,
-              data: supplementaryData.radarChartData.organizationValues,
+              data: orgChartValues,
               borderColor: "rgb(37, 99, 235)",
               backgroundColor: "rgba(37, 99, 235, 0.2)",
               pointBackgroundColor: "rgb(37, 99, 235)",
               pointBorderColor: "#fff",
             },
             {
-              label: supplementaryData.sectorName,
-              data: supplementaryData.radarChartData.sectorValues,
+              label: supplementaryData.sectorName ?? "Sector Average",
+              data: sectorChartValues,
               borderColor: "rgb(34, 197, 94)",
               backgroundColor: "rgba(34, 197, 94, 0.2)",
               pointBackgroundColor: "rgb(34, 197, 94)",
@@ -1417,9 +1453,7 @@ export async function generateUnifiedADVPDFClient(
         },
         options: {
           responsive: false,
-          animation: {
-            duration: 0, // Completely disable all animations
-          },
+          animation: false, // Completely disable all animations
           plugins: {
             title: {
               display: true,
@@ -1448,11 +1482,12 @@ export async function generateUnifiedADVPDFClient(
         },
       });
 
-      // Force a complete render by triggering update
+      // Force a complete render
+      chart.draw();
       chart.update("none");
 
-      // Additional timeout to ensure rendering is complete
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Shorter timeout - chart.js with animation disabled should render immediately
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Get image data from canvas with maximum quality
       const chartImage = canvas.toDataURL("image/png", 1.0);

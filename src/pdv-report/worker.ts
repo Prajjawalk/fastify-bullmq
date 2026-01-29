@@ -22,16 +22,57 @@ export interface PDVReportJobData {
   pdvAnswers: Array<{ question: string; answer: string }>;
 }
 
+// Default system prompt to ensure clean, professional responses
+const DEFAULT_SYSTEM_PROMPT = `You are a professional business analyst providing data valuation reports.
+
+CRITICAL INSTRUCTIONS:
+1. NEVER include meta-commentary about your process (e.g., "I'll search for...", "Let me find...", "I notice that...")
+2. NEVER mention that information is incomplete, unavailable, or that you need to search
+3. Provide DIRECT, FACTUAL responses only - as if you already have all the information
+4. If you don't have specific data, provide reasonable industry estimates based on the company's sector
+5. Write in a professional, authoritative tone suitable for business reports
+6. NEVER include phrases like "Based on my search", "According to my findings", "I found that"
+7. Start responses directly with the content - no preambles or explanations of what you're doing`;
+
+// Helper to sanitize Claude responses by removing meta-commentary
+function sanitizeResponse(text: string): string {
+  // Patterns to remove meta-commentary
+  const metaPatterns = [
+    /^(I'll|Let me|I need to|I will|I'm going to|First,? I'll|I notice that|I should|I can|Based on my search,?)\s+[^.]*?\.\s*/gi,
+    /\b(I'll need to search|I notice that|I found that|Based on my findings|According to my search|My search shows|Let me search|I'm searching)\b[^.]*?\.\s*/gi,
+    /\b(appears to be incomplete|information is not available|could not find|unable to locate|no specific information)\b[^.]*?\.\s*/gi,
+    /^(Searching|Looking for|Analyzing|Processing|Gathering).*?\.\s*/gim,
+  ];
+
+  let cleaned = text;
+  for (const pattern of metaPatterns) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+
+  // Remove any leading/trailing whitespace and normalize spacing
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleaned;
+}
+
 // Helper to call Claude API
 async function callClaude(
   client: Anthropic,
   prompt: string,
-  options?: { systemPrompt?: string; maxTokens?: number; jsonMode?: boolean }
+  options?: {
+    systemPrompt?: string;
+    maxTokens?: number;
+    jsonMode?: boolean;
+    skipSanitization?: boolean;
+  }
 ): Promise<string> {
+  // Use custom system prompt if provided, otherwise use default
+  const systemPrompt = options?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+
   const message = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: options?.maxTokens ?? 5000,
-    ...(options?.systemPrompt ? { system: options.systemPrompt } : {}),
+    system: systemPrompt,
     messages: [{ role: 'user', content: prompt }],
     tools: [
       {
@@ -43,7 +84,14 @@ async function callClaude(
   });
 
   const textBlock = message.content.find((block) => block.type === 'text');
-  return textBlock && 'text' in textBlock ? textBlock.text : '';
+  let response = textBlock && 'text' in textBlock ? textBlock.text : '';
+
+  // Sanitize response unless explicitly skipped (e.g., for JSON responses)
+  if (!options?.skipSanitization && !options?.jsonMode) {
+    response = sanitizeResponse(response);
+  }
+
+  return response;
 }
 
 // Helper to extract JSON from Claude's response
@@ -228,7 +276,12 @@ Provide the response in JSON format:
   }
 }
 
-Respond with ONLY the JSON object, no other text.`
+Respond with ONLY the JSON object, no other text.`,
+    {
+      skipSanitization: true,
+      systemPrompt:
+        'You are a JSON data formatter. Respond with ONLY valid JSON. No explanatory text, no markdown code blocks, just the raw JSON object.',
+    }
   );
 
   let summaryJson: {
@@ -386,7 +439,12 @@ Provide response in JSON format:
   }
 }
 
-Respond with ONLY the JSON object, no other text.`
+Respond with ONLY the JSON object, no other text.`,
+    {
+      skipSanitization: true,
+      systemPrompt:
+        'You are a JSON data formatter. Respond with ONLY valid JSON. No explanatory text, no markdown code blocks, just the raw JSON object.',
+    }
   );
 
   let comparisonJson: Record<string, unknown>;
@@ -482,8 +540,9 @@ Important:
 Respond with ONLY the JSON object, no other text.`;
 
   const extractRaw = await callClaude(client, extractPrompt, {
+    skipSanitization: true,
     systemPrompt:
-      'You are a data extraction expert. Extract structured numerical data from unstructured text. Always respond with valid JSON only.',
+      'You are a data extraction expert. Extract structured numerical data from unstructured text. Always respond with valid JSON only. No explanatory text.',
   });
 
   let extractedData: {
