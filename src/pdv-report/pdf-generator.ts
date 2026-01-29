@@ -41,9 +41,55 @@ function ensureFontRegistered(): string {
     const { registerFont } = require("canvas");
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
 
-    // Try common font paths across different OS
-    const fontPaths = [
+    // First try local Geist fonts (bundled with the app)
+    // __dirname points to the compiled output directory, but we need to handle both dev and prod
+    const possibleBasePaths = [
+      path.join(__dirname, "Geist", "static"), // When running from dist
+      path.join(__dirname, "..", "src", "pdv-report", "Geist", "static"), // From project root dist
+      path.join(process.cwd(), "src", "pdv-report", "Geist", "static"), // From cwd
+      path.join(process.cwd(), "dist", "pdv-report", "Geist", "static"), // From cwd dist
+    ];
+
+    // Local Geist fonts (preferred)
+    const localFontFiles = [
+      { file: "Geist-Regular.ttf", family: "Geist", weight: "normal" },
+      { file: "Geist-Medium.ttf", family: "Geist", weight: "500" },
+      { file: "Geist-Bold.ttf", family: "Geist", weight: "bold" },
+    ];
+
+    // Try to find and register local Geist fonts
+    for (const basePath of possibleBasePaths) {
+      console.log(`🔍 [PDF-Generator] Checking font path: ${basePath}`);
+      if (fs.existsSync(basePath)) {
+        let fontsRegistered = 0;
+        for (const { file, family, weight } of localFontFiles) {
+          const fontPath = path.join(basePath, file);
+          try {
+            if (fs.existsSync(fontPath)) {
+              registerFont(fontPath, { family: "ChartFont", weight });
+              console.log(`✅ [PDF-Generator] Registered local font "${family} ${weight}" from: ${fontPath}`);
+              fontsRegistered++;
+            }
+          } catch (err) {
+            console.log(`⚠️ [PDF-Generator] Failed to register font from ${fontPath}:`, err);
+          }
+        }
+        if (fontsRegistered > 0) {
+          fontRegistered = true;
+          registeredFontFamily = "ChartFont";
+          console.log(`✅ [PDF-Generator] Successfully registered ${fontsRegistered} Geist font variants`);
+          return registeredFontFamily;
+        }
+      }
+    }
+
+    console.warn("⚠️ [PDF-Generator] Local Geist fonts not found, trying system fonts...");
+
+    // Fallback to system fonts
+    const systemFontPaths = [
       // Linux (Debian/Ubuntu)
       { path: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", family: "DejaVu Sans" },
       { path: "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", family: "Liberation Sans" },
@@ -58,23 +104,22 @@ function ensureFontRegistered(): string {
       { path: "C:\\Windows\\Fonts\\calibri.ttf", family: "Calibri" },
     ];
 
-    for (const { path, family } of fontPaths) {
+    for (const { path: fontPath, family } of systemFontPaths) {
       try {
-        if (fs.existsSync(path)) {
-          registerFont(path, { family: "ChartFont" });
-          console.log(`✅ [PDF-Generator] Registered font "${family}" from: ${path}`);
+        if (fs.existsSync(fontPath)) {
+          registerFont(fontPath, { family: "ChartFont" });
+          console.log(`✅ [PDF-Generator] Registered system font "${family}" from: ${fontPath}`);
           fontRegistered = true;
           registeredFontFamily = "ChartFont";
           return registeredFontFamily;
         }
       } catch (err) {
-        console.log(`⚠️ [PDF-Generator] Failed to register font from ${path}:`, err);
+        console.log(`⚠️ [PDF-Generator] Failed to register font from ${fontPath}:`, err);
         continue;
       }
     }
 
     console.warn("⚠️ [PDF-Generator] No suitable font found. Chart text may not render correctly.");
-    console.warn("⚠️ [PDF-Generator] Available font paths checked:", fontPaths.map(f => f.path));
   } catch (err) {
     console.error("❌ [PDF-Generator] Error during font registration:", err);
   }

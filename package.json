@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "dts build",
+    "postbuild": "cp -r src/pdv-report/Geist dist/pdv-report/",
     "lint": "dts lint",
     "watch": "dts watch",
     "start": "node dist/index.js",
