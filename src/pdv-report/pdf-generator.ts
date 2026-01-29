@@ -22,8 +22,73 @@ Chart.register(
   Legend,
 );
 
-// Set global default font for Chart.js (important for node-canvas)
-Chart.defaults.font.family = "Arial, Helvetica, sans-serif";
+// Register font for node-canvas (server-side only)
+let fontRegistered = false;
+let registeredFontFamily = "sans-serif"; // fallback
+
+function ensureFontRegistered(): string {
+  if (typeof document !== "undefined") {
+    // Browser environment - fonts work normally
+    return "Arial, Helvetica, sans-serif";
+  }
+
+  if (fontRegistered) {
+    return registeredFontFamily;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { registerFont } = require("canvas");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs");
+
+    // Try common font paths across different OS
+    const fontPaths = [
+      // Linux (Debian/Ubuntu)
+      { path: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", family: "DejaVu Sans" },
+      { path: "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", family: "Liberation Sans" },
+      { path: "/usr/share/fonts/truetype/freefont/FreeSans.ttf", family: "FreeSans" },
+      // Linux (Fedora/RHEL)
+      { path: "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf", family: "DejaVu Sans" },
+      // macOS
+      { path: "/System/Library/Fonts/Helvetica.ttc", family: "Helvetica" },
+      { path: "/Library/Fonts/Arial.ttf", family: "Arial" },
+      // Windows
+      { path: "C:\\Windows\\Fonts\\arial.ttf", family: "Arial" },
+      { path: "C:\\Windows\\Fonts\\calibri.ttf", family: "Calibri" },
+    ];
+
+    for (const { path, family } of fontPaths) {
+      try {
+        if (fs.existsSync(path)) {
+          registerFont(path, { family: "ChartFont" });
+          console.log(`✅ [PDF-Generator] Registered font "${family}" from: ${path}`);
+          fontRegistered = true;
+          registeredFontFamily = "ChartFont";
+          return registeredFontFamily;
+        }
+      } catch (err) {
+        console.log(`⚠️ [PDF-Generator] Failed to register font from ${path}:`, err);
+        continue;
+      }
+    }
+
+    console.warn("⚠️ [PDF-Generator] No suitable font found. Chart text may not render correctly.");
+    console.warn("⚠️ [PDF-Generator] Available font paths checked:", fontPaths.map(f => f.path));
+  } catch (err) {
+    console.error("❌ [PDF-Generator] Error during font registration:", err);
+  }
+
+  fontRegistered = true; // Mark as attempted to avoid repeated tries
+  return "sans-serif";
+}
+
+// Get the font family to use for charts
+const chartFontFamily = ensureFontRegistered();
+console.log(`📝 [PDF-Generator] Using chart font family: ${chartFontFamily}`);
+
+// Set global default font for Chart.js
+Chart.defaults.font.family = chartFontFamily;
 Chart.defaults.font.size = 12;
 
 // Pixel conversion constants (1mm ≈ 3.78px at 96 DPI)
@@ -372,6 +437,9 @@ export async function generateSupplementaryPDFClient(
 
   // Generate Radar Chart
   try {
+    console.log("📊 [PDF-Generator] Starting radar chart generation...");
+    console.log("📊 [PDF-Generator] Using font family:", chartFontFamily);
+
     const canvas = createCanvas(600, 600);
 
     // Get categories from any of the possible field names
@@ -381,10 +449,12 @@ export async function generateSupplementaryPDFClient(
       data.radarChartData["data metrics"] ??
       ["Data Reliance", "Data Attribution", "Data Uniqueness", "Data Scarcity", "Data Ownership"];
 
+    console.log("📊 [PDF-Generator] Chart categories:", categories);
+
     // Validate and sanitize chart data values - ensure they're valid numbers
     const sanitizeValues = (values: number[] | undefined, expectedLength: number): number[] => {
       if (!values || !Array.isArray(values) || values.length === 0) {
-        // Return default values if data is missing
+        console.warn("⚠️ [PDF-Generator] Missing chart values, using defaults");
         return Array(expectedLength).fill(50);
       }
       return values.map((v) => {
@@ -397,6 +467,9 @@ export async function generateSupplementaryPDFClient(
 
     const orgValues = sanitizeValues(data.radarChartData.organizationValues, categories.length);
     const sectorValues = sanitizeValues(data.radarChartData.sectorValues, categories.length);
+
+    console.log("📊 [PDF-Generator] Organization values:", orgValues);
+    console.log("📊 [PDF-Generator] Sector values:", sectorValues);
 
     // Create chart with animation disabled and explicit font settings for node-canvas
     const chart = new Chart(canvas, {
@@ -429,12 +502,12 @@ export async function generateSupplementaryPDFClient(
           title: {
             display: true,
             text: "Competitive Position Comparison",
-            font: { size: 16, family: "Arial, Helvetica, sans-serif" },
+            font: { size: 16, family: chartFontFamily },
           },
           legend: {
             position: "bottom",
             labels: {
-              font: { size: 12, family: "Arial, Helvetica, sans-serif" },
+              font: { size: 12, family: chartFontFamily },
             },
           },
         },
@@ -445,12 +518,12 @@ export async function generateSupplementaryPDFClient(
             min: 0,
             ticks: {
               stepSize: 20,
-              font: { size: 10, family: "Arial, Helvetica, sans-serif" },
+              font: { size: 10, family: chartFontFamily },
             },
             pointLabels: {
               font: {
                 size: 12,
-                family: "Arial, Helvetica, sans-serif",
+                family: chartFontFamily,
               },
             },
           },
@@ -462,11 +535,16 @@ export async function generateSupplementaryPDFClient(
     chart.draw();
     chart.update("none");
 
+    console.log("📊 [PDF-Generator] Chart rendered, waiting for completion...");
+
     // Shorter timeout - chart.js with animation disabled should render immediately
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Get image data from canvas with maximum quality
     const chartImage = canvas.toDataURL("image/png", 1.0);
+
+    console.log(`📊 [PDF-Generator] Chart image generated, length: ${chartImage.length} bytes`);
+    console.log(`📊 [PDF-Generator] Chart image prefix: ${chartImage.substring(0, 50)}...`);
 
     // Verify the image was generated correctly
     if (!chartImage || chartImage === "data:," || chartImage.length < 1000) {
@@ -486,8 +564,9 @@ export async function generateSupplementaryPDFClient(
     // Add image with proper error handling
     try {
       doc.addImage(chartImage, "PNG", 113.4, yPos, 567, 567); // 30mm, 150mm x 150mm
+      console.log("✅ [PDF-Generator] Chart image added to PDF successfully");
     } catch (imgError) {
-      console.error("Error adding image to PDF:", imgError);
+      console.error("❌ [PDF-Generator] Error adding image to PDF:", imgError);
       // Add text instead if image fails
       doc.setFontSize(11);
       doc.setFont("Geist", "normal");
@@ -503,7 +582,7 @@ export async function generateSupplementaryPDFClient(
     chart.destroy();
     // canvas.remove() is not available in Node.js (node-canvas)
   } catch (error) {
-    console.error("Error generating radar chart:", error);
+    console.error("❌ [PDF-Generator] Error generating radar chart:", error);
     // Continue with PDF generation even if chart fails
   }
 
@@ -1410,6 +1489,9 @@ export async function generateUnifiedADVPDFClient(
 
     // Generate Radar Chart
     try {
+      console.log("📊 [PDF-Generator] Starting unified PDF radar chart generation...");
+      console.log("📊 [PDF-Generator] Using font family:", chartFontFamily);
+
       const canvas = createCanvas(600, 600);
 
       // Get categories from any of the possible field names
@@ -1419,10 +1501,12 @@ export async function generateUnifiedADVPDFClient(
         supplementaryData.radarChartData["data metrics"] ??
         ["Data Reliance", "Data Attribution", "Data Uniqueness", "Data Scarcity", "Data Ownership"];
 
+      console.log("📊 [PDF-Generator] Chart categories:", categories);
+
       // Validate and sanitize chart data values - ensure they're valid numbers
       const sanitizeChartValues = (values: number[] | undefined, expectedLength: number): number[] => {
         if (!values || !Array.isArray(values) || values.length === 0) {
-          // Return default values if data is missing
+          console.warn("⚠️ [PDF-Generator] Missing chart values, using defaults");
           return Array(expectedLength).fill(50);
         }
         return values.map((v) => {
@@ -1435,6 +1519,9 @@ export async function generateUnifiedADVPDFClient(
 
       const orgChartValues = sanitizeChartValues(supplementaryData.radarChartData.organizationValues, categories.length);
       const sectorChartValues = sanitizeChartValues(supplementaryData.radarChartData.sectorValues, categories.length);
+
+      console.log("📊 [PDF-Generator] Organization values:", orgChartValues);
+      console.log("📊 [PDF-Generator] Sector values:", sectorChartValues);
 
       // Create chart with animation disabled and explicit font settings for node-canvas
       const chart = new Chart(canvas, {
@@ -1467,12 +1554,12 @@ export async function generateUnifiedADVPDFClient(
             title: {
               display: true,
               text: "Competitive Position Comparison",
-              font: { size: 16, family: "Arial, Helvetica, sans-serif" },
+              font: { size: 16, family: chartFontFamily },
             },
             legend: {
               position: "bottom",
               labels: {
-                font: { size: 12, family: "Arial, Helvetica, sans-serif" },
+                font: { size: 12, family: chartFontFamily },
               },
             },
           },
@@ -1483,12 +1570,12 @@ export async function generateUnifiedADVPDFClient(
               min: 0,
               ticks: {
                 stepSize: 20,
-                font: { size: 10, family: "Arial, Helvetica, sans-serif" },
+                font: { size: 10, family: chartFontFamily },
               },
               pointLabels: {
                 font: {
                   size: 12,
-                  family: "Arial, Helvetica, sans-serif",
+                  family: chartFontFamily,
                 },
               },
             },
@@ -1500,11 +1587,16 @@ export async function generateUnifiedADVPDFClient(
       chart.draw();
       chart.update("none");
 
+      console.log("📊 [PDF-Generator] Unified chart rendered, waiting for completion...");
+
       // Shorter timeout - chart.js with animation disabled should render immediately
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Get image data from canvas with maximum quality
       const chartImage = canvas.toDataURL("image/png", 1.0);
+
+      console.log(`📊 [PDF-Generator] Unified chart image generated, length: ${chartImage.length} bytes`);
+      console.log(`📊 [PDF-Generator] Unified chart image prefix: ${chartImage.substring(0, 50)}...`);
 
       // Verify the image was generated correctly
       if (!chartImage || chartImage === "data:," || chartImage.length < 1000) {
@@ -1524,8 +1616,9 @@ export async function generateUnifiedADVPDFClient(
       // Add image with proper error handling
       try {
         doc.addImage(chartImage, "PNG", 113.4, yPos, 567, 567); // 30mm, 150mm x 150mm
+        console.log("✅ [PDF-Generator] Unified chart image added to PDF successfully");
       } catch (imgError) {
-        console.error("Error adding image to PDF:", imgError);
+        console.error("❌ [PDF-Generator] Error adding image to PDF:", imgError);
         // Add text instead if image fails
         doc.setFontSize(11);
         doc.setFont("Geist", "normal");
@@ -1541,7 +1634,7 @@ export async function generateUnifiedADVPDFClient(
       chart.destroy();
       // canvas.remove();
     } catch (error) {
-      console.error("Error generating radar chart:", error);
+      console.error("❌ [PDF-Generator] Error generating unified radar chart:", error);
       // Continue with PDF generation even if chart fails
     }
 
