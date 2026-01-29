@@ -307,7 +307,7 @@ const run = async () => {
     ) => {
       const body = req.body;
       try {
-        const job = await emailQueue.add(`Email`, body, { delay: 300000 });
+        const job = await emailQueue.add(`Email`, body, { delay: 172800000 });
 
         reply.send({
           ok: true,

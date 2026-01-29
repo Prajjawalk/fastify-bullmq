@@ -30,7 +30,7 @@ async function callClaude(
 ): Promise<string> {
   const message = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: options?.maxTokens ?? 1024,
+    max_tokens: options?.maxTokens ?? 50000,
     ...(options?.systemPrompt ? { system: options.systemPrompt } : {}),
     messages: [{ role: 'user', content: prompt }],
     tools: [
@@ -104,8 +104,7 @@ Estimate the data reliance percentage for ${orgName}. Data reliance measures how
 Provide:
 1. A specific percentage estimate (e.g., "75%")
 2. Detailed analysis explaining the estimate
-3. Key factors that influence this percentage`,
-    { maxTokens: 300 }
+3. Key factors that influence this percentage`
   );
   accumulatedContext += `\n\n--- Data Reliance Analysis ---\n${dataReliance}`;
 
@@ -120,8 +119,7 @@ Estimate the data attribute percentage for ${orgName}. Data attribute measures w
 Provide:
 1. A specific percentage estimate (e.g., "70%")
 2. Detailed analysis explaining the estimate
-3. How this relates to their data reliance`,
-    { maxTokens: 300 }
+3. How this relates to their data reliance`
   );
   accumulatedContext += `\n\n--- Data Attribute Analysis ---\n${dataAttribute}`;
 
@@ -136,8 +134,7 @@ Estimate the data uniqueness percentage for ${orgName}. Data uniqueness measures
 Provide:
 1. A specific percentage estimate (e.g., "60%")
 2. Detailed analysis explaining the estimate
-3. What makes their data unique or common`,
-    { maxTokens: 300 }
+3. What makes their data unique or common`
   );
   accumulatedContext += `\n\n--- Data Uniqueness Analysis ---\n${dataUniqueness}`;
 
@@ -152,8 +149,7 @@ Estimate the data scarcity percentage for ${orgName}. Data scarcity measures how
 Provide:
 1. A specific percentage estimate (e.g., "55%")
 2. Detailed analysis explaining the estimate
-3. Factors that contribute to or reduce scarcity`,
-    { maxTokens: 300 }
+3. Factors that contribute to or reduce scarcity`
   );
   accumulatedContext += `\n\n--- Data Scarcity Analysis ---\n${dataScarcity}`;
 
@@ -168,8 +164,7 @@ Estimate the data ownership percentage for ${orgName}. Data ownership measures w
 Provide:
 1. A specific percentage estimate (e.g., "80%")
 2. Detailed analysis explaining the estimate
-3. Ownership structure and any limitations`,
-    { maxTokens: 300 }
+3. Ownership structure and any limitations`
   );
   accumulatedContext += `\n\n--- Data Ownership Analysis ---\n${dataOwnership}`;
 
@@ -184,8 +179,7 @@ What is the typical data reliance percentage for the sector that ${orgName} oper
 Provide:
 1. The sector/industry name
 2. Typical sector data reliance percentage
-3. How ${orgName} compares to sector average`,
-    { maxTokens: 300 }
+3. How ${orgName} compares to sector average`
   );
   accumulatedContext += `\n\n--- Sector Reliance Analysis ---\n${sectorReliance}`;
 
@@ -201,8 +195,7 @@ Provide a detailed analysis of the data collected by ${orgName}, including:
 3. Data collection methods and sources
 4. How their data collection supports the metrics analyzed above
 
-Format as a professional paragraph.`,
-    { maxTokens: 400 }
+Format as a professional paragraph.`
   );
   accumulatedContext += `\n\n--- Data Collection Analysis ---\n${dataCollection}`;
 
@@ -235,8 +228,7 @@ Provide the response in JSON format:
   }
 }
 
-Respond with ONLY the JSON object, no other text.`,
-    { maxTokens: 800 }
+Respond with ONLY the JSON object, no other text.`
   );
 
   let summaryJson: {
@@ -351,8 +343,12 @@ ${preADVData.dataCollection ?? 'Not available'}
 
 Extracted Metrics:
 - Data Reliance: ${preADVData.extractedMetrics?.dataReliancePercent ?? 'N/A'}%
-- Data Attribution: ${preADVData.extractedMetrics?.dataAttributePercent ?? 'N/A'}%
-- Data Uniqueness: ${preADVData.extractedMetrics?.dataUniquenessPercent ?? 'N/A'}%
+- Data Attribution: ${
+        preADVData.extractedMetrics?.dataAttributePercent ?? 'N/A'
+      }%
+- Data Uniqueness: ${
+        preADVData.extractedMetrics?.dataUniquenessPercent ?? 'N/A'
+      }%
 - Data Scarcity: ${preADVData.extractedMetrics?.dataScarcityPercent ?? 'N/A'}%
 - Data Ownership: ${preADVData.extractedMetrics?.dataOwnershipPercent ?? 'N/A'}%
 
@@ -390,8 +386,7 @@ Provide response in JSON format:
   }
 }
 
-Respond with ONLY the JSON object, no other text.`,
-    { maxTokens: 1000 }
+Respond with ONLY the JSON object, no other text.`
   );
 
   let comparisonJson: Record<string, unknown>;
@@ -489,7 +484,6 @@ Respond with ONLY the JSON object, no other text.`;
   const extractRaw = await callClaude(client, extractPrompt, {
     systemPrompt:
       'You are a data extraction expert. Extract structured numerical data from unstructured text. Always respond with valid JSON only.',
-    maxTokens: 1024,
   });
 
   let extractedData: {
@@ -511,13 +505,13 @@ Respond with ONLY the JSON object, no other text.`;
   const dataReliancePercent = isUnrealisticPercent(
     extractedData.dataReliancePercent
   )
-    ? (preADVMetrics.dataReliancePercent ?? 50)
+    ? preADVMetrics.dataReliancePercent ?? 50
     : extractedData.dataReliancePercent;
 
   const dataAttributablePercent = isUnrealisticPercent(
     extractedData.dataAttributablePercent
   )
-    ? (preADVMetrics.dataAttributePercent ?? 50)
+    ? preADVMetrics.dataAttributePercent ?? 50
     : extractedData.dataAttributablePercent;
 
   // Get additional metrics from preADVData (these are discounting factors)
