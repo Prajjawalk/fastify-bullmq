@@ -149,9 +149,10 @@ export const setupPDVReportProcessor = async (
         const result: PDVReportJobResult = await processPDVReportJob(jobData);
 
         if (result.success && result.emailData) {
-          // Schedule email delivery via the existing EmailQueue with 5-minute delay
+          // Schedule email delivery via the existing EmailQueue with 48-hour delay
+          // 48 hours = 48 * 60 * 60 * 1000 = 172800000 ms
           const emailJob = await emailQueue.add('Email', result.emailData, {
-            delay: 300000,
+            delay: 172800000,
           });
           console.log(
             `📧 Email job ${emailJob.id} scheduled for report ${jobData.reportId}`
