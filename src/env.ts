@@ -19,4 +19,7 @@ export const env = envsafe({
   FIREFLIES_WEBHOOK_SECRET: str({
     default: '', // Optional: for verifying webhook signatures
   }),
+  DOCUSIGN_HMAC_KEY: str({
+    default: '', // Optional: for verifying DocuSign webhook signatures
+  }),
 });

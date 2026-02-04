@@ -143,6 +143,41 @@ const firefliesWebhook = {
   required: ['meetingId', 'eventType'],
 } as const;
 
+// DocuSign Connect webhook payload type
+interface DocuSignWebhookPayload {
+  event: string;
+  apiVersion: string;
+  uri: string;
+  retryCount: number;
+  configurationId: number;
+  generatedDateTime: string;
+  data: {
+    accountId: string;
+    userId: string;
+    envelopeId: string;
+    envelopeSummary: {
+      status: string;
+      envelopeId: string;
+      emailSubject: string;
+      sentDateTime?: string;
+      deliveredDateTime?: string;
+      completedDateTime?: string;
+      voidedDateTime?: string;
+      voidedReason?: string;
+      declinedDateTime?: string;
+    };
+  };
+}
+
+// DocuSign status mapping to our enum
+const docuSignStatusMap: Record<string, string> = {
+  sent: 'SENT',
+  delivered: 'DELIVERED',
+  completed: 'SIGNED',
+  declined: 'DECLINED',
+  voided: 'VOIDED',
+};
+
 // Helper function to match organizer email to community member, company, or project
 async function matchMeetingToEntity(organizerEmail: string) {
   // Try to match to community member
@@ -176,6 +211,174 @@ async function matchMeetingToEntity(organizerEmail: string) {
   }
 
   return null;
+}
+
+// DocuSign webhook handlers for different document types
+async function handleAdvisorAgreementSigned(
+  envelope: {
+    communityLeadId: string;
+    recipientEmail: string;
+    recipientName: string;
+  },
+  postmarkClient: import('postmark').ServerClient
+) {
+  // Update community lead with signed status
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).communityLead.update({
+    where: { id: envelope.communityLeadId },
+    data: {
+      advisorAgreementStatus: 'SIGNED',
+      advisorAgreedAt: new Date(),
+    },
+  });
+
+  // Send confirmation email
+  const firstName =
+    envelope.recipientName.split(' ')[0] ?? envelope.recipientName;
+
+  await postmarkClient.sendEmail({
+    From: 'community@one2b.io',
+    To: envelope.recipientEmail,
+    Subject: 'Advisor Agreement Signed - Welcome to One 2B!',
+    HtmlBody: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #1E4364;">Welcome to One 2B, ${firstName}!</h1>
+        <p>Thank you for signing the Advisor Collaboration Agreement. We're excited to have you as part of our advisor network.</p>
+        <p>As an advisor, you'll gain access to:</p>
+        <ul>
+          <li>Exclusive networking opportunities</li>
+          <li>Strategic conversations with industry leaders</li>
+          <li>Collaborative opportunities across our community</li>
+        </ul>
+        <p>Our team will be in touch soon with next steps and onboarding information.</p>
+        <p>Best regards,<br>The One 2B Team</p>
+      </div>
+    `,
+    TextBody: `Welcome to One 2B, ${firstName}!\n\nThank you for signing the Advisor Collaboration Agreement. We're excited to have you as part of our advisor network.\n\nOur team will be in touch soon with next steps and onboarding information.\n\nBest regards,\nThe One 2B Team`,
+    MessageStream: 'outbound',
+  });
+
+  console.log(
+    `✅ Advisor Agreement signed confirmation sent to: ${envelope.recipientEmail}`
+  );
+}
+
+async function handleCommunityNdaSigned(
+  envelope: {
+    communityLeadId: string;
+    recipientEmail: string;
+    recipientName: string;
+  },
+  postmarkClient: import('postmark').ServerClient
+) {
+  // Get community lead with vertical groups
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lead = await (db as any).communityLead.update({
+    where: { id: envelope.communityLeadId },
+    data: {
+      ndaStatus: 'SIGNED',
+      ndaSignedAt: new Date(),
+      whatsappAccessGranted: true,
+    },
+  });
+
+  // Get the primary vertical group's WhatsApp link
+  const verticalGroupName = lead.verticalGroups?.[0];
+  let whatsappLink = 'https://chat.whatsapp.com/your-default-group'; // Fallback
+
+  if (verticalGroupName) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const verticalGroup = await (db as any).verticalGroup.findFirst({
+      where: { name: verticalGroupName },
+    });
+    if (verticalGroup?.whatsappLink) {
+      whatsappLink = verticalGroup.whatsappLink;
+    }
+  }
+
+  // Send WhatsApp access email
+  const firstName =
+    envelope.recipientName.split(' ')[0] ?? envelope.recipientName;
+
+  await postmarkClient.sendEmail({
+    From: 'jps@12butterflies.life',
+    To: envelope.recipientEmail,
+    Subject: 'NDA Signed - Your One 2B Community Access',
+    HtmlBody: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #1E4364;">Welcome to the Community, ${firstName}!</h1>
+        <p>Thank you for signing the NDA. You now have access to our exclusive community WhatsApp group.</p>
+        <p style="margin: 24px 0;">
+          <a href="${whatsappLink}" style="background-color: #25D366; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">
+            Join WhatsApp Group
+          </a>
+        </p>
+        <p><strong>Community Guidelines:</strong></p>
+        <ul>
+          <li>Be respectful and professional</li>
+          <li>Keep discussions confidential as per the NDA</li>
+          <li>Share valuable insights and support fellow members</li>
+        </ul>
+        <p>We're excited to have you as part of our community!</p>
+        <p>Best regards,<br>The One 2B Team</p>
+      </div>
+    `,
+    TextBody: `Welcome to the Community, ${firstName}!\n\nThank you for signing the NDA. You now have access to our exclusive community WhatsApp group.\n\nJoin here: ${whatsappLink}\n\nWe're excited to have you as part of our community!\n\nBest regards,\nThe One 2B Team`,
+    MessageStream: 'outbound',
+  });
+
+  console.log(
+    `✅ Community NDA signed - WhatsApp access sent to: ${envelope.recipientEmail}`
+  );
+}
+
+async function handleCompanyNdaSigned(
+  envelope: {
+    companyLeadId: string;
+    recipientEmail: string;
+    recipientName: string;
+  },
+  postmarkClient: import('postmark').ServerClient
+) {
+  // Update company lead with signed status
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).communityCompanyLead.update({
+    where: { id: envelope.companyLeadId },
+    data: {
+      ndaStatus: 'SIGNED',
+      ndaSignedAt: new Date(),
+    },
+  });
+
+  // Send next steps email
+  const firstName =
+    envelope.recipientName.split(' ')[0] ?? envelope.recipientName;
+
+  await postmarkClient.sendEmail({
+    From: 'jps@12butterflies.life',
+    To: envelope.recipientEmail,
+    Subject: 'NDA Signed - Next Steps for Your One 2B Partnership',
+    HtmlBody: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #1E4364;">Thank You, ${firstName}!</h1>
+        <p>We've received your signed NDA. Thank you for taking this step toward our partnership.</p>
+        <p><strong>What's Next:</strong></p>
+        <ul>
+          <li>Our team will review your company profile</li>
+          <li>We'll schedule an introductory call within 24-48 hours</li>
+          <li>You'll receive tailored recommendations based on your business needs</li>
+        </ul>
+        <p>In the meantime, feel free to reach out if you have any questions.</p>
+        <p>Best regards,<br>The One 2B Partnerships Team</p>
+      </div>
+    `,
+    TextBody: `Thank You, ${firstName}!\n\nWe've received your signed NDA. Thank you for taking this step toward our partnership.\n\nWhat's Next:\n- Our team will review your company profile\n- We'll schedule an introductory call within 24-48 hours\n- You'll receive tailored recommendations based on your business needs\n\nIn the meantime, feel free to reach out if you have any questions.\n\nBest regards,\nThe One 2B Partnerships Team`,
+    MessageStream: 'outbound',
+  });
+
+  console.log(
+    `✅ Company NDA signed - next steps email sent to: ${envelope.recipientEmail}`
+  );
 }
 
 const run = async () => {
@@ -568,6 +771,124 @@ const run = async () => {
         });
       } catch (e) {
         console.error('Error handling Fireflies webhook:', e);
+        reply.send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // DocuSign Connect webhook endpoint
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/docusign-webhook',
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const payload = req.body as DocuSignWebhookPayload;
+
+      try {
+        const envelopeId = payload.data?.envelopeId;
+        const status = payload.data?.envelopeSummary?.status;
+
+        if (!envelopeId || !status) {
+          console.log('DocuSign webhook: Missing envelopeId or status');
+          reply.send({ ok: true, message: 'Missing required data' });
+          return;
+        }
+
+        console.log(
+          `📩 DocuSign webhook received: envelope ${envelopeId}, status: ${status}`
+        );
+
+        // Map DocuSign status to our enum
+        const newStatus = docuSignStatusMap[status] ?? status.toUpperCase();
+
+        // Find the envelope in our database
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const envelope = await (db as any).docuSignEnvelope.findUnique({
+          where: { envelopeId },
+          include: { communityLead: true, companyLead: true },
+        });
+
+        if (!envelope) {
+          console.log(
+            `DocuSign webhook: Envelope ${envelopeId} not found in DB`
+          );
+          reply.send({ ok: true, message: 'Envelope not found' });
+          return;
+        }
+
+        // Update envelope status
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (db as any).docuSignEnvelope.update({
+          where: { envelopeId },
+          data: {
+            status: newStatus,
+            ...(newStatus === 'SIGNED' && { signedAt: new Date() }),
+            ...(newStatus === 'DECLINED' && { declinedAt: new Date() }),
+            ...(newStatus === 'VOIDED' && { voidedAt: new Date() }),
+            ...(newStatus === 'DELIVERED' && { viewedAt: new Date() }),
+          },
+        });
+
+        console.log(
+          `✅ Updated envelope ${envelopeId} status to: ${newStatus}`
+        );
+
+        // Handle completion based on document type
+        if (newStatus === 'SIGNED') {
+          // Create Postmark client for sending emails
+          const { ServerClient } = await import('postmark');
+          const postmarkClient = new ServerClient(env.AUTH_POSTMARK_KEY);
+
+          switch (envelope.documentType) {
+            case 'ADVISOR_AGREEMENT':
+              if (envelope.communityLeadId) {
+                await handleAdvisorAgreementSigned(
+                  {
+                    communityLeadId: envelope.communityLeadId,
+                    recipientEmail: envelope.recipientEmail,
+                    recipientName: envelope.recipientName,
+                  },
+                  postmarkClient
+                );
+              }
+              break;
+
+            case 'COMMUNITY_NDA':
+              if (envelope.communityLeadId) {
+                await handleCommunityNdaSigned(
+                  {
+                    communityLeadId: envelope.communityLeadId,
+                    recipientEmail: envelope.recipientEmail,
+                    recipientName: envelope.recipientName,
+                  },
+                  postmarkClient
+                );
+              }
+              break;
+
+            case 'COMPANY_NDA':
+              if (envelope.companyLeadId) {
+                await handleCompanyNdaSigned(
+                  {
+                    companyLeadId: envelope.companyLeadId,
+                    recipientEmail: envelope.recipientEmail,
+                    recipientName: envelope.recipientName,
+                  },
+                  postmarkClient
+                );
+              }
+              break;
+
+            default:
+              console.log(`Unknown document type: ${envelope.documentType}`);
+          }
+        }
+
+        reply.send({ ok: true, message: 'Webhook processed successfully' });
+      } catch (e) {
+        console.error('Error handling DocuSign webhook:', e);
         reply.send({
           ok: false,
           error: e instanceof Error ? e.message : 'Unknown error',
