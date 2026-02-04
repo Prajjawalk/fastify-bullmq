@@ -779,6 +779,124 @@ const run = async () => {
     }
   );
 
+  // DocuSign OAuth consent endpoint - redirects to DocuSign for initial consent
+  // This is a one-time setup required for JWT authentication to work
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).get(
+    '/docusign/consent',
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        if (!env.DOCUSIGN_INTEGRATION_KEY || !env.DOCUSIGN_OAUTH_BASE_URL) {
+          reply.status(500).send({
+            ok: false,
+            error: 'DocuSign OAuth not configured',
+          });
+          return;
+        }
+
+        // Build the consent URL
+        const redirectUri = `https://${env.RAILWAY_STATIC_URL}/docusign/callback`;
+        const scopes = 'signature impersonation';
+
+        const consentUrl = new URL(
+          '/oauth/auth',
+          env.DOCUSIGN_OAUTH_BASE_URL
+        );
+        consentUrl.searchParams.set('response_type', 'code');
+        consentUrl.searchParams.set('scope', scopes);
+        consentUrl.searchParams.set('client_id', env.DOCUSIGN_INTEGRATION_KEY);
+        consentUrl.searchParams.set('redirect_uri', redirectUri);
+
+        console.log(`🔐 Redirecting to DocuSign consent: ${consentUrl.toString()}`);
+
+        reply.redirect(consentUrl.toString());
+      } catch (e) {
+        console.error('Error building DocuSign consent URL:', e);
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // DocuSign OAuth callback - handles the redirect after user grants consent
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).get(
+    '/docusign/callback',
+    async (
+      req: FastifyRequest<{ Querystring: { code?: string; error?: string; error_description?: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { code, error, error_description } = req.query;
+
+        if (error) {
+          console.error(`DocuSign OAuth error: ${error} - ${error_description}`);
+          reply.type('text/html').send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>DocuSign Consent Failed</title></head>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
+              <h1 style="color: #dc3545;">❌ Consent Failed</h1>
+              <p><strong>Error:</strong> ${error}</p>
+              <p><strong>Description:</strong> ${error_description ?? 'No description provided'}</p>
+              <p>Please try the consent flow again or check your DocuSign application settings.</p>
+              <a href="/docusign/consent" style="display: inline-block; padding: 10px 20px; background: #1E4364; color: white; text-decoration: none; border-radius: 5px;">Try Again</a>
+            </body>
+            </html>
+          `);
+          return;
+        }
+
+        if (code) {
+          // Consent was granted successfully
+          // For JWT authentication, we don't need to exchange the code for tokens
+          // The consent grant is now stored in DocuSign and JWT auth will work
+          console.log('✅ DocuSign consent granted successfully');
+
+          reply.type('text/html').send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>DocuSign Consent Granted</title></head>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
+              <h1 style="color: #28a745;">✅ Consent Granted Successfully!</h1>
+              <p>DocuSign JWT authentication is now authorized.</p>
+              <p>Your One 2B application can now send documents for e-signature on behalf of the configured user.</p>
+              <h3>What's Next?</h3>
+              <ul>
+                <li>The DocuSign integration is now ready to use</li>
+                <li>Advisor Agreements, Community NDAs, and Company NDAs can be sent automatically</li>
+                <li>Signatures will be tracked and WhatsApp access will be granted upon NDA completion</li>
+              </ul>
+              <p style="color: #6c757d; margin-top: 30px;">You can close this window.</p>
+            </body>
+            </html>
+          `);
+        } else {
+          // No code or error - unexpected state
+          reply.type('text/html').send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>DocuSign Consent</title></head>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
+              <h1 style="color: #ffc107;">⚠️ Unexpected Response</h1>
+              <p>No authorization code or error was received from DocuSign.</p>
+              <a href="/docusign/consent" style="display: inline-block; padding: 10px 20px; background: #1E4364; color: white; text-decoration: none; border-radius: 5px;">Try Again</a>
+            </body>
+            </html>
+          `);
+        }
+      } catch (e) {
+        console.error('Error handling DocuSign callback:', e);
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
   // DocuSign Connect webhook endpoint
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(

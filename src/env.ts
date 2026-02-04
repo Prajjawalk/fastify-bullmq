@@ -22,4 +22,14 @@ export const env = envsafe({
   DOCUSIGN_HMAC_KEY: str({
     default: '', // Optional: for verifying DocuSign webhook signatures
   }),
+  // DocuSign OAuth configuration
+  DOCUSIGN_INTEGRATION_KEY: str({
+    default: '', // DocuSign Integration Key (Client ID)
+  }),
+  DOCUSIGN_OAUTH_BASE_URL: str({
+    default: 'https://account-d.docusign.com', // Demo: account-d.docusign.com, Prod: account.docusign.com
+  }),
+  DOCUSIGN_USER_ID: str({
+    default: '', // The user ID to impersonate for JWT auth
+  }),
 });
