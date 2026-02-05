@@ -144,8 +144,10 @@ const firefliesWebhook = {
 } as const;
 
 // DocuSign Connect webhook payload type
+// Note: The actual payload from DocuSign Connect does NOT include envelopeSummary.
+// The envelope status is derived from the top-level "event" field (e.g., "envelope-completed").
 interface DocuSignWebhookPayload {
-  event: string;
+  event: string; // e.g., "envelope-completed", "envelope-sent", "envelope-delivered", "envelope-declined", "envelope-voided"
   apiVersion: string;
   uri: string;
   retryCount: number;
@@ -155,17 +157,6 @@ interface DocuSignWebhookPayload {
     accountId: string;
     userId: string;
     envelopeId: string;
-    envelopeSummary: {
-      status: string;
-      envelopeId: string;
-      emailSubject: string;
-      sentDateTime?: string;
-      deliveredDateTime?: string;
-      completedDateTime?: string;
-      voidedDateTime?: string;
-      voidedReason?: string;
-      declinedDateTime?: string;
-    };
   };
 }
 
@@ -906,16 +897,19 @@ const run = async () => {
 
       try {
         const envelopeId = payload.data?.envelopeId;
-        const status = payload.data?.envelopeSummary?.status;
+        const event = payload.event;
 
-        if (!envelopeId || !status) {
-          console.log('DocuSign webhook: Missing envelopeId or status');
+        if (!envelopeId || !event) {
+          console.log('DocuSign webhook: Missing envelopeId or event');
           reply.send({ ok: true, message: 'Missing required data' });
           return;
         }
 
+        // Extract status from event field: "envelope-completed" → "completed"
+        const status = event.replace(/^envelope-/, '');
+
         console.log(
-          `📩 DocuSign webhook received: envelope ${envelopeId}, status: ${status}`
+          `📩 DocuSign webhook received: envelope ${envelopeId}, event: ${event}, status: ${status}`
         );
 
         // Map DocuSign status to our enum
