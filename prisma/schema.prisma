@@ -969,6 +969,16 @@ model CommunityLead {
   // Step 4: Additional Context
   additionalContext    String?
 
+  // Step 4: Advisor Interest
+  isAdvisor            Boolean   @default(false)
+  advisorAgreedAt      DateTime?
+
+  // DocuSign signature tracking
+  advisorAgreementStatus    DocuSignEnvelopeStatus?
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+  whatsappAccessGranted     Boolean @default(false)
+
   // Vertical Groups Assignment
   verticalGroups       String[] // Auto-assigned based on industry + sector
 
@@ -1016,6 +1026,9 @@ model CommunityLead {
 
   // Meeting transcripts
   meetingTranscripts   MeetingTranscript[]
+
+  // DocuSign envelopes
+  docuSignEnvelopes    DocuSignEnvelope[]
 
   @@index([email])
   @@index([createdAt])
@@ -1212,11 +1225,18 @@ model CommunityCompanyLead {
   currentStep               Int      @default(1)
   reviewStatus              String?  @default("pending")
 
+  // DocuSign signature tracking
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
   // Referral tracking
   referralsReceived         Referral[] @relation("ReferredCompany")
 
   // Meeting transcripts
   meetingTranscripts        MeetingTranscript[]
+
+  // DocuSign envelopes
+  docuSignEnvelopes         DocuSignEnvelope[]
 
   @@index([companyEmail])
   @@index([createdAt])
@@ -1397,4 +1417,57 @@ model ModuleBandingCache {
   @@index([workflowId])
   @@index([moduleType])
   @@index([generatedAt])
+}
+
+// DocuSign Integration Enums
+enum DocuSignDocumentType {
+  ADVISOR_AGREEMENT
+  COMMUNITY_NDA
+  COMPANY_NDA
+}
+
+enum DocuSignEnvelopeStatus {
+  CREATED
+  SENT
+  DELIVERED
+  VIEWED
+  SIGNED
+  DECLINED
+  VOIDED
+}
+
+// DocuSign Envelope Tracking
+model DocuSignEnvelope {
+  id                  String   @id @default(cuid())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  envelopeId          String   @unique  // DocuSign envelope ID
+  templateId          String             // Template used
+
+  documentType        DocuSignDocumentType // ADVISOR_AGREEMENT, COMMUNITY_NDA, COMPANY_NDA
+
+  // Recipient info
+  recipientEmail      String
+  recipientName       String
+
+  // Status tracking
+  status              DocuSignEnvelopeStatus @default(SENT)
+  sentAt              DateTime?
+  viewedAt            DateTime?
+  signedAt            DateTime?
+  declinedAt          DateTime?
+  voidedAt            DateTime?
+
+  // Link to entity
+  communityLeadId     String?
+  communityLead       CommunityLead? @relation(fields: [communityLeadId], references: [id], onDelete: Cascade)
+
+  companyLeadId       String?
+  companyLead         CommunityCompanyLead? @relation(fields: [companyLeadId], references: [id], onDelete: Cascade)
+
+  @@index([communityLeadId])
+  @@index([companyLeadId])
+  @@index([envelopeId])
+  @@index([status])
 }
