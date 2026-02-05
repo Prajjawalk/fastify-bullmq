@@ -228,7 +228,7 @@ async function handleAdvisorAgreementSigned(
     envelope.recipientName.split(' ')[0] ?? envelope.recipientName;
 
   await postmarkClient.sendEmail({
-    From: 'community@one2b.io',
+    From: 'jps@12butterflies.life',
     To: envelope.recipientEmail,
     Subject: 'Advisor Agreement Signed - Welcome to One 2B!',
     HtmlBody: `
@@ -789,16 +789,15 @@ const run = async () => {
         const redirectUri = `https://${env.RAILWAY_STATIC_URL}/docusign/callback`;
         const scopes = 'signature impersonation';
 
-        const consentUrl = new URL(
-          '/oauth/auth',
-          env.DOCUSIGN_OAUTH_BASE_URL
-        );
+        const consentUrl = new URL('/oauth/auth', env.DOCUSIGN_OAUTH_BASE_URL);
         consentUrl.searchParams.set('response_type', 'code');
         consentUrl.searchParams.set('scope', scopes);
         consentUrl.searchParams.set('client_id', env.DOCUSIGN_INTEGRATION_KEY);
         consentUrl.searchParams.set('redirect_uri', redirectUri);
 
-        console.log(`🔐 Redirecting to DocuSign consent: ${consentUrl.toString()}`);
+        console.log(
+          `🔐 Redirecting to DocuSign consent: ${consentUrl.toString()}`
+        );
 
         reply.redirect(consentUrl.toString());
       } catch (e) {
@@ -816,14 +815,22 @@ const run = async () => {
   (server as any).get(
     '/docusign/callback',
     async (
-      req: FastifyRequest<{ Querystring: { code?: string; error?: string; error_description?: string } }>,
+      req: FastifyRequest<{
+        Querystring: {
+          code?: string;
+          error?: string;
+          error_description?: string;
+        };
+      }>,
       reply: FastifyReply
     ) => {
       try {
         const { code, error, error_description } = req.query;
 
         if (error) {
-          console.error(`DocuSign OAuth error: ${error} - ${error_description}`);
+          console.error(
+            `DocuSign OAuth error: ${error} - ${error_description}`
+          );
           reply.type('text/html').send(`
             <!DOCTYPE html>
             <html>
@@ -831,7 +838,9 @@ const run = async () => {
             <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
               <h1 style="color: #dc3545;">❌ Consent Failed</h1>
               <p><strong>Error:</strong> ${error}</p>
-              <p><strong>Description:</strong> ${error_description ?? 'No description provided'}</p>
+              <p><strong>Description:</strong> ${
+                error_description ?? 'No description provided'
+              }</p>
               <p>Please try the consent flow again or check your DocuSign application settings.</p>
               <a href="/docusign/consent" style="display: inline-block; padding: 10px 20px; background: #1E4364; color: white; text-decoration: none; border-radius: 5px;">Try Again</a>
             </body>
