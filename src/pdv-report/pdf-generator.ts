@@ -705,7 +705,7 @@ export async function generateSupplementaryPDFClient(
   if (data.competitors?.length) {
     // New 7-column layout: Data Metric + Org + 5 Competitors
     const compColWidth = (642.6 - 120) / 6;
-    doc.setFontSize(7);
+    doc.setFontSize(8.5);
     doc.text('Data Metric', MARGIN_PX + 5, yPos + 26.5);
     doc.text(orgName.substring(0, 10), MARGIN_PX + 125, yPos + 26.5);
     data.competitors.slice(0, 5).forEach((name, i) => {
@@ -744,7 +744,7 @@ export async function generateSupplementaryPDFClient(
 
     if (data.competitors?.length) {
       const compColWidth = (642.6 - 120) / 6;
-      doc.setFontSize(6.5);
+      doc.setFontSize(8);
       doc.text(
         doc.splitTextToSize(row.dataMetric, 110)[0] ?? '',
         MARGIN_PX + 5,
@@ -770,7 +770,7 @@ export async function generateSupplementaryPDFClient(
         );
       });
     } else {
-      doc.setFontSize(8);
+      doc.setFontSize(9);
       doc.text(
         doc.splitTextToSize(row.dataMetric, 132.3)[0] ?? '',
         83.2,
@@ -805,7 +805,8 @@ export async function generateSupplementaryPDFClient(
     data.comparisonTable.length * 37.8
   );
 
-  // Generate Radar Chart
+  // Generate Radar Chart (on same page, below table)
+  yPos += 30; // gap between table and chart
   try {
     console.log('📊 [PDF-Generator] Starting radar chart generation...');
     console.log('📊 [PDF-Generator] Using font family:', chartFontFamily);
@@ -977,17 +978,16 @@ export async function generateSupplementaryPDFClient(
       throw new Error('Failed to generate chart image - canvas may be empty');
     }
 
-    doc.addPage();
-    pageNumbers.radarChart = doc.getCurrentPageInfo().pageNumber;
-    addPdvPageHeader(doc, orgName);
-    yPos = MARGIN_PX + 20;
-    yPos = drawSectionBadge(doc, '2', 'Radar Chart Analysis', yPos);
-
-    yPos += 10;
+    // Check if chart fits on current page, otherwise new page
+    if (yPos + 400 > PAGE_HEIGHT_PX - MARGIN_PX) {
+      doc.addPage();
+      addPdvPageHeader(doc, orgName);
+      yPos = MARGIN_PX + 30;
+    }
 
     // Add image with proper error handling
     try {
-      doc.addImage(chartImage, 'PNG', 113.4, yPos, 567, 567); // 30mm, 150mm x 150mm
+      doc.addImage(chartImage, 'PNG', 150, yPos, 450, 450);
       console.log('✅ [PDF-Generator] Chart image added to PDF successfully');
     } catch (imgError) {
       console.error('❌ [PDF-Generator] Error adding image to PDF:', imgError);
@@ -1009,46 +1009,6 @@ export async function generateSupplementaryPDFClient(
     // Continue with PDF generation even if chart fails
   }
 
-  // Add qualitative analysis
-  doc.addPage();
-  pageNumbers.qualitativeAnalysis = doc.getCurrentPageInfo().pageNumber;
-  addPdvPageHeader(doc, orgName);
-  yPos = MARGIN_PX + 20;
-  yPos = drawSectionBadge(doc, '3', 'Qualitative Analysis', yPos);
-
-  yPos += 10;
-  doc.setFontSize(11);
-  doc.setFont('Geist', 'normal');
-  doc.setTextColor(...BRAND_BLUE);
-
-  // Split long text into paragraphs and render as bullet points
-  const qualParagraphs = data.qualitativeComparison
-    .split(/\n+/)
-    .map((p: string) => p.trim())
-    .filter((p: string) => p.length > 0);
-  qualParagraphs.forEach((para: string) => {
-    if (yPos > 1020) {
-      doc.addPage();
-      addPdvPageHeader(doc, orgName);
-      yPos = MARGIN_PX + 30;
-    }
-    // Add bullet
-    doc.setFont('Geist', 'bold');
-    doc.text('•', MARGIN_PX, yPos);
-    doc.setFont('Geist', 'normal');
-    const bulletLines = doc.splitTextToSize(para, CONTENT_WIDTH_PX - 20) as string[];
-    bulletLines.forEach((bl: string) => {
-      if (yPos > 1058) {
-        doc.addPage();
-        addPdvPageHeader(doc, orgName);
-        yPos = MARGIN_PX + 30;
-      }
-      doc.text(bl, MARGIN_PX + 15, yPos);
-      yPos += 18;
-    });
-    yPos += 8; // gap between bullets
-  });
-
   // ============ BLUE END PAGE ============
   addBlueEndPage(doc);
 
@@ -1056,8 +1016,6 @@ export async function generateSupplementaryPDFClient(
   doc.setPage(2);
   drawTocEntries(doc, orgName, [
     { title: 'Data Metric Comparison', page: pageNumbers.dataMetricComparison },
-    { title: 'Radar Chart Analysis', page: pageNumbers.radarChart },
-    { title: 'Qualitative Analysis', page: pageNumbers.qualitativeAnalysis },
   ]);
 
   // ============ ADD FOOTERS ============
@@ -1590,13 +1548,13 @@ export async function generateUnifiedADVPDFClient(
       doc.setTextColor(...BRAND_BLUE);
       const questionLines = doc.splitTextToSize(qa.question, 642.6); // 170mm
       doc.text(questionLines, MARGIN_PX, yPos);
-      yPos += questionLines.length * 22.7 + 7.6; // 6mm line height + 2mm gap
+      yPos += questionLines.length * 18 + 4; // tighter line height + small gap
 
       doc.setFont('Geist', 'normal');
       doc.setTextColor(...ACCENT_BLUE);
       const answerLines = doc.splitTextToSize(qa.answer, 642.6); // 170mm
       doc.text(answerLines, MARGIN_PX, yPos);
-      yPos += answerLines.length * 22.7 + 37.8; // 6mm line height + 10mm gap
+      yPos += answerLines.length * 18 + 20; // tighter line height + moderate gap between pairs
     });
 
     // PDV Results with Chart
@@ -1884,7 +1842,7 @@ export async function generateUnifiedADVPDFClient(
     if (supplementaryData.competitors?.length) {
       // New 7-column layout: Data Metric + Org + 5 Competitors
       const compColWidth = (642.6 - 120) / 6;
-      doc.setFontSize(7);
+      doc.setFontSize(8.5);
       doc.text('Data Metric', MARGIN_PX + 5, yPos + 26.5);
       doc.text(orgName.substring(0, 10), MARGIN_PX + 125, yPos + 26.5);
       supplementaryData.competitors.slice(0, 5).forEach((name, i) => {
@@ -1927,7 +1885,7 @@ export async function generateUnifiedADVPDFClient(
 
       if (supplementaryData.competitors?.length) {
         const compColWidth = (642.6 - 120) / 6;
-        doc.setFontSize(6.5);
+        doc.setFontSize(8);
         doc.text(
           doc.splitTextToSize(row.dataMetric, 110)[0] ?? '',
           MARGIN_PX + 5,
@@ -1953,7 +1911,7 @@ export async function generateUnifiedADVPDFClient(
           );
         });
       } else {
-        doc.setFontSize(8);
+        doc.setFontSize(9);
         doc.text(
           doc.splitTextToSize(row.dataMetric, 132.3)[0] ?? '',
           83.2,
@@ -2170,20 +2128,17 @@ export async function generateUnifiedADVPDFClient(
         throw new Error('Failed to generate chart image - canvas may be empty');
       }
 
-      doc.addPage();
-      addPdvPageHeader(doc, orgName);
-      unifiedTocEntries.push({
-        title: 'Radar Chart Analysis',
-        page: doc.getCurrentPageInfo().pageNumber,
-      });
-      yPos = MARGIN_PX + 30;
-
-      yPos = drawSectionBadge(doc, String(sectionNumber), 'Radar Chart Analysis', yPos);
-      sectionNumber++;
+      // Radar chart on same page if it fits, otherwise new page
+      yPos += 30;
+      if (yPos + 400 > PAGE_HEIGHT_PX - MARGIN_PX) {
+        doc.addPage();
+        addPdvPageHeader(doc, orgName);
+        yPos = MARGIN_PX + 30;
+      }
 
       // Add image with proper error handling
       try {
-        doc.addImage(chartImage, 'PNG', 113.4, yPos, 567, 567); // 30mm, 150mm x 150mm
+        doc.addImage(chartImage, 'PNG', 150, yPos, 450, 450);
         console.log(
           '✅ [PDF-Generator] Unified chart image added to PDF successfully'
         );
@@ -2214,48 +2169,6 @@ export async function generateUnifiedADVPDFClient(
       // Continue with PDF generation even if chart fails
     }
 
-    // Add qualitative analysis
-    doc.addPage();
-    addPdvPageHeader(doc, orgName);
-    unifiedTocEntries.push({
-      title: 'Qualitative Analysis',
-      page: doc.getCurrentPageInfo().pageNumber,
-    });
-    yPos = MARGIN_PX + 30;
-
-    yPos = drawSectionBadge(doc, String(sectionNumber), 'Qualitative Analysis', yPos);
-    sectionNumber++;
-
-    doc.setFontSize(11);
-    doc.setFont('Geist', 'normal');
-    doc.setTextColor(...BRAND_BLUE);
-
-    // Split long text into paragraphs and render as bullet points
-    const unifiedQualParagraphs = supplementaryData.qualitativeComparison
-      .split(/\n+/)
-      .map((p: string) => p.trim())
-      .filter((p: string) => p.length > 0);
-    unifiedQualParagraphs.forEach((para: string) => {
-      if (yPos > 1020) {
-        doc.addPage();
-        addPdvPageHeader(doc, orgName);
-        yPos = MARGIN_PX + 30;
-      }
-      doc.setFont('Geist', 'bold');
-      doc.text('•', MARGIN_PX, yPos);
-      doc.setFont('Geist', 'normal');
-      const bulletLines = doc.splitTextToSize(para, CONTENT_WIDTH_PX - 20) as string[];
-      bulletLines.forEach((bl: string) => {
-        if (yPos > 1058) {
-          doc.addPage();
-          addPdvPageHeader(doc, orgName);
-          yPos = MARGIN_PX + 30;
-        }
-        doc.text(bl, MARGIN_PX + 15, yPos);
-        yPos += 18;
-      });
-      yPos += 8;
-    });
   }
 
   // Section 3: Appendix with Pre-PDV (if PDV was main)
