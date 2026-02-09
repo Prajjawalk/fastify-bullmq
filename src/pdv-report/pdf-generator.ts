@@ -317,25 +317,30 @@ function drawSectionBadge(
   sectionTitle: string,
   yPos: number
 ): number {
-  const badgeSize = 100;
-  const badgeX = MARGIN_PX + 10;
+  const badgeSize = 50;
+  const badgeX = MARGIN_PX;
 
   doc.setFillColor(...ACCENT_BLUE);
-  doc.roundedRect(badgeX, yPos, badgeSize, badgeSize, 12, 12, 'F');
+  doc.roundedRect(badgeX, yPos, badgeSize, badgeSize, 8, 8, 'F');
 
-  doc.setFontSize(60);
+  doc.setFontSize(24);
   doc.setFont('Geist', 'bold');
   doc.setTextColor(...WHITE);
-  doc.text(sectionNumber, badgeX + badgeSize / 2, yPos + badgeSize / 2 + 25, {
+  doc.text(sectionNumber, badgeX + badgeSize / 2, yPos + badgeSize / 2 + 9, {
     align: 'center',
   });
 
-  doc.setFontSize(28);
+  // Title text next to badge, vertically centered
+  const titleX = badgeX + badgeSize + 15;
+  const maxTitleWidth = PAGE_WIDTH_PX - titleX - MARGIN_PX;
+  doc.setFontSize(18);
   doc.setFont('Geist', 'bold');
   doc.setTextColor(...BRAND_BLUE);
-  doc.text(sectionTitle, badgeX + badgeSize + 30, yPos + badgeSize / 2 + 10);
+  // Truncate if too long
+  const truncatedTitle = (doc.splitTextToSize(sectionTitle, maxTitleWidth) as string[])[0] ?? sectionTitle;
+  doc.text(truncatedTitle, titleX, yPos + badgeSize / 2 + 7);
 
-  return yPos + badgeSize + 20;
+  return yPos + badgeSize + 25;
 }
 
 /** Draw a sky-tint header bar across the page */
@@ -682,11 +687,11 @@ export async function generateSupplementaryPDFClient(
   yPos += 10;
 
   // Table header
-  doc.setFillColor(37, 99, 235);
+  doc.setFillColor(...BRAND_BLUE);
   doc.rect(MARGIN_PX, yPos, 642.6, 37.8, 'F'); // 170mm x 10mm
 
   doc.setFont('Geist', 'bold');
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(...WHITE);
 
   if (data.competitors?.length) {
     // New 7-column layout: Data Metric + Org + 5 Competitors
@@ -714,13 +719,14 @@ export async function generateSupplementaryPDFClient(
 
   // Table rows
   doc.setFont('Geist', 'normal');
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(...BRAND_BLUE);
 
   data.comparisonTable.forEach((row, index) => {
     if (yPos > 1020.6) {
       // 270mm
       doc.addPage();
-      yPos = MARGIN_PX;
+      addPdvPageHeader(doc, orgName);
+      yPos = MARGIN_PX + 30;
     }
 
     const bgColor = index % 2 === 0 ? [243, 244, 246] : [255, 255, 255];
@@ -1006,11 +1012,33 @@ export async function generateSupplementaryPDFClient(
   doc.setFont('Geist', 'normal');
   doc.setTextColor(...BRAND_BLUE);
 
-  const lines = doc.splitTextToSize(
-    data.qualitativeComparison,
-    CONTENT_WIDTH_PX
-  );
-  doc.text(lines, MARGIN_PX, yPos);
+  // Split long text into paragraphs and render as bullet points
+  const qualParagraphs = data.qualitativeComparison
+    .split(/\n+/)
+    .map((p: string) => p.trim())
+    .filter((p: string) => p.length > 0);
+  qualParagraphs.forEach((para: string) => {
+    if (yPos > 1020) {
+      doc.addPage();
+      addPdvPageHeader(doc, orgName);
+      yPos = MARGIN_PX + 30;
+    }
+    // Add bullet
+    doc.setFont('Geist', 'bold');
+    doc.text('•', MARGIN_PX, yPos);
+    doc.setFont('Geist', 'normal');
+    const bulletLines = doc.splitTextToSize(para, CONTENT_WIDTH_PX - 20) as string[];
+    bulletLines.forEach((bl: string) => {
+      if (yPos > 1058) {
+        doc.addPage();
+        addPdvPageHeader(doc, orgName);
+        yPos = MARGIN_PX + 30;
+      }
+      doc.text(bl, MARGIN_PX + 15, yPos);
+      yPos += 18;
+    });
+    yPos += 8; // gap between bullets
+  });
 
   // ============ BLUE END PAGE ============
   addBlueEndPage(doc);
@@ -1501,16 +1529,10 @@ export async function generateUnifiedADVPDFClient(
 
     // Section badge + header bar
     yPos = MARGIN_PX + 30;
-    drawHeaderBar(doc, yPos, 80);
-    yPos += 20;
-    drawSectionBadge(
-      doc,
-      String(sectionNumber),
-      'Preliminary Data Valuation (PDV) Report',
-      yPos
-    );
+    drawHeaderBar(doc, yPos, 60);
+    yPos += 5;
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Preliminary Data Valuation (PDV) Report', yPos);
     sectionNumber++;
-    yPos += 80;
 
     // Introduction
     addSection(
@@ -1543,9 +1565,8 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(doc, String(sectionNumber), 'Questions & Answers', yPos);
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Questions & Answers', yPos);
     sectionNumber++;
-    yPos += 80;
 
     advData.qaTable.forEach((qa) => {
       if (yPos > 945) {
@@ -1578,11 +1599,10 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(doc, String(sectionNumber), 'PDV Valuation Results', yPos);
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'PDV Valuation Results', yPos);
     sectionNumber++;
-    yPos += 80;
 
-    yPos += 75.6; // 20mm
+    yPos += 37.8; // 10mm
 
     // Display PDV range
     doc.setFontSize(14);
@@ -1712,11 +1732,10 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawHeaderBar(doc, yPos, 80);
-    yPos += 20;
-    drawSectionBadge(doc, String(sectionNumber), 'Pre-PDV Assessment', yPos);
+    drawHeaderBar(doc, yPos, 60);
+    yPos += 5;
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Pre-PDV Assessment', yPos);
     sectionNumber++;
-    yPos += 80;
 
     // Add Pre-PDV sections
     addMdSection('Company Overview', preADVData.overview);
@@ -1739,14 +1758,8 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(
-      doc,
-      String(sectionNumber),
-      'Competitive Advantages',
-      yPos
-    );
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Competitive Advantages', yPos);
     sectionNumber++;
-    yPos += 80;
 
     doc.setFontSize(11);
     doc.setFont('Geist', 'normal');
@@ -1761,7 +1774,14 @@ export async function generateUnifiedADVPDFClient(
 
     yPos += 37.8; // 10mm
 
-    // Data Profile Table
+    // Data Profile Table - check if entire table fits on current page
+    const dpTableHeight = 37.8 + 37.8 + preADVData.summary.dataProfileTable.length * 37.8; // title + header + rows
+    if (yPos + dpTableHeight > PAGE_HEIGHT_PX - MARGIN_PX) {
+      doc.addPage();
+      addPdvPageHeader(doc, orgName);
+      yPos = MARGIN_PX + 30;
+    }
+
     doc.setFontSize(16);
     doc.setFont('Geist', 'bold');
     doc.setTextColor(...BRAND_BLUE);
@@ -1833,57 +1853,17 @@ export async function generateUnifiedADVPDFClient(
     doc.addPage();
     addPdvPageHeader(doc, orgName);
     unifiedTocEntries.push({
-      title: 'Data Profile & Competitive Moat Comparison',
-      page: doc.getCurrentPageInfo().pageNumber,
-    });
-    yPos = MARGIN_PX + 30;
-
-    drawHeaderBar(doc, yPos, 80);
-    yPos += 20;
-    drawSectionBadge(
-      doc,
-      String(sectionNumber),
-      'Data Profile & Competitive Moat Comparison',
-      yPos
-    );
-    sectionNumber++;
-    yPos += 80;
-
-    doc.setFontSize(16);
-    doc.setFont('Geist', 'bold');
-    doc.setTextColor(...ACCENT_BLUE);
-    doc.text(
-      `${orgName} vs. ${supplementaryData.sectorName}`,
-      CENTER_X_PX,
-      yPos,
-      {
-        align: 'center',
-      }
-    );
-
-    yPos += 75.6; // 20mm
-    doc.setFontSize(12);
-    doc.setFont('Geist', 'normal');
-    doc.setTextColor(...MUTED_BLUE);
-    doc.text(new Date().toLocaleDateString(), CENTER_X_PX, yPos, {
-      align: 'center',
-    });
-
-    // Add new page for comparison table
-    doc.addPage();
-    addPdvPageHeader(doc, orgName);
-    unifiedTocEntries.push({
       title: 'Data Metric Comparison',
       page: doc.getCurrentPageInfo().pageNumber,
     });
     yPos = MARGIN_PX + 30;
 
-    doc.setFontSize(16);
-    doc.setFont('Geist', 'bold');
-    doc.setTextColor(...BRAND_BLUE);
-    doc.text('Data Metric Comparison', MARGIN_PX, yPos);
+    drawHeaderBar(doc, yPos, 60);
+    yPos += 5;
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Data Metric Comparison', yPos);
+    sectionNumber++;
 
-    yPos += 37.8; // 10mm
+    yPos += 10;
 
     // Table header
     doc.setFillColor(...BRAND_BLUE);
@@ -2189,14 +2169,8 @@ export async function generateUnifiedADVPDFClient(
       });
       yPos = MARGIN_PX + 30;
 
-      drawSectionBadge(
-        doc,
-        String(sectionNumber),
-        'Radar Chart Analysis',
-        yPos
-      );
+      yPos = drawSectionBadge(doc, String(sectionNumber), 'Radar Chart Analysis', yPos);
       sectionNumber++;
-      yPos += 80;
 
       // Add image with proper error handling
       try {
@@ -2240,24 +2214,39 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(
-      doc,
-      String(sectionNumber),
-      'Qualitative Analysis of Primary Competitive Moat',
-      yPos
-    );
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Qualitative Analysis', yPos);
     sectionNumber++;
-    yPos += 80;
 
     doc.setFontSize(11);
     doc.setFont('Geist', 'normal');
     doc.setTextColor(...BRAND_BLUE);
 
-    const lines = doc.splitTextToSize(
-      supplementaryData.qualitativeComparison,
-      642.6 // 170mm
-    );
-    doc.text(lines, MARGIN_PX, yPos);
+    // Split long text into paragraphs and render as bullet points
+    const unifiedQualParagraphs = supplementaryData.qualitativeComparison
+      .split(/\n+/)
+      .map((p: string) => p.trim())
+      .filter((p: string) => p.length > 0);
+    unifiedQualParagraphs.forEach((para: string) => {
+      if (yPos > 1020) {
+        doc.addPage();
+        addPdvPageHeader(doc, orgName);
+        yPos = MARGIN_PX + 30;
+      }
+      doc.setFont('Geist', 'bold');
+      doc.text('•', MARGIN_PX, yPos);
+      doc.setFont('Geist', 'normal');
+      const bulletLines = doc.splitTextToSize(para, CONTENT_WIDTH_PX - 20) as string[];
+      bulletLines.forEach((bl: string) => {
+        if (yPos > 1058) {
+          doc.addPage();
+          addPdvPageHeader(doc, orgName);
+          yPos = MARGIN_PX + 30;
+        }
+        doc.text(bl, MARGIN_PX + 15, yPos);
+        yPos += 18;
+      });
+      yPos += 8;
+    });
   }
 
   // Section 3: Appendix with Pre-PDV (if PDV was main)
@@ -2270,16 +2259,10 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawHeaderBar(doc, yPos, 80);
-    yPos += 20;
-    drawSectionBadge(
-      doc,
-      String(sectionNumber),
-      'Appendix: Pre-PDV Assessment',
-      yPos
-    );
+    drawHeaderBar(doc, yPos, 60);
+    yPos += 5;
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Appendix: Pre-PDV Assessment', yPos);
     sectionNumber++;
-    yPos += 80;
 
     // Add Pre-PDV sections
     addSection('Company Overview', preADVData.overview);
@@ -2295,14 +2278,8 @@ export async function generateUnifiedADVPDFClient(
     addPdvPageHeader(doc, orgName);
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(
-      doc,
-      String(sectionNumber),
-      'Competitive Advantages',
-      yPos
-    );
+    yPos = drawSectionBadge(doc, String(sectionNumber), 'Competitive Advantages', yPos);
     sectionNumber++;
-    yPos += 80;
 
     doc.setFontSize(11);
     doc.setFont('Geist', 'normal');
@@ -2317,7 +2294,14 @@ export async function generateUnifiedADVPDFClient(
 
     yPos += 37.8; // 10mm
 
-    // Data Profile Table
+    // Data Profile Table - check if entire table fits on current page
+    const appendixDpTableHeight = 37.8 + 37.8 + preADVData.summary.dataProfileTable.length * 37.8; // title + header + rows
+    if (yPos + appendixDpTableHeight > PAGE_HEIGHT_PX - MARGIN_PX) {
+      doc.addPage();
+      addPdvPageHeader(doc, orgName);
+      yPos = MARGIN_PX + 30;
+    }
+
     doc.setFontSize(16);
     doc.setFont('Geist', 'bold');
     doc.setTextColor(...BRAND_BLUE);
