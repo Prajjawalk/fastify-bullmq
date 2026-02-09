@@ -555,7 +555,6 @@ Respond with ONLY the JSON object, no other text.`,
     dataUniqueness: dataUniqueness ?? '',
     dataScarcity: dataScarcity ?? '',
     dataOwnership: dataOwnership ?? '',
-    sectorReliance: sectorReliance ?? '',
     dataCollection,
     summary: summaryJson,
     extractedMetrics,
@@ -582,9 +581,6 @@ Respond with ONLY the JSON object, no other text.`,
   );
   console.log(
     `📊 [generatePrePDVData] Data Ownership length: ${dataOwnership.length} chars`
-  );
-  console.log(
-    `📊 [generatePrePDVData] Sector Reliance length: ${sectorReliance.length} chars`
   );
   console.log(
     `📊 [generatePrePDVData] Data Collection length: ${dataCollection.length} chars`

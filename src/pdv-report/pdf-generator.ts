@@ -259,7 +259,11 @@ function drawCoverPage(
   doc.setFontSize(12);
   doc.setFont('Geist', 'normal');
   doc.setTextColor(...MUTED_BLUE);
-  doc.text(new Date().toLocaleDateString(), MARGIN_PX + 40, PAGE_HEIGHT_PX / 2 + 10);
+  doc.text(
+    new Date().toLocaleDateString(),
+    MARGIN_PX + 40,
+    PAGE_HEIGHT_PX / 2 + 10
+  );
 
   // Bottom accent ribbon
   doc.setFillColor(...ACCENT_BLUE);
@@ -290,7 +294,12 @@ function addPdvFooters(doc: jsPDF): void {
 
     doc.setDrawColor(...TEXT_GRAY);
     doc.setLineWidth(1);
-    doc.line(MARGIN_PX, PAGE_HEIGHT_PX - 30, PAGE_WIDTH_PX - MARGIN_PX, PAGE_HEIGHT_PX - 30);
+    doc.line(
+      MARGIN_PX,
+      PAGE_HEIGHT_PX - 30,
+      PAGE_WIDTH_PX - MARGIN_PX,
+      PAGE_HEIGHT_PX - 30
+    );
 
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_GRAY);
@@ -394,7 +403,6 @@ interface PreADVData {
   dataUniqueness: string;
   dataScarcity: string;
   dataOwnership: string;
-  sectorReliance: string;
   dataCollection: string;
   summary: {
     summary: string;
@@ -475,13 +483,12 @@ export async function generatePreADVPDFClient(
   const sections = [
     { num: '1', title: 'Summary', content: data.summary.summary },
     { num: '2', title: 'Company Overview', content: data.overview },
-    { num: '3', title: 'Data Reliance (Sector)', content: data.sectorReliance },
-    { num: '4', title: 'Data Reliance (Company)', content: data.dataReliance },
-    { num: '5', title: 'Data Driven', content: data.dataAttribute },
-    { num: '6', title: 'Data Ownership', content: data.dataOwnership },
-    { num: '7', title: 'Data Uniqueness', content: data.dataUniqueness },
-    { num: '8', title: 'Data Scarcity', content: data.dataScarcity },
-    { num: '9', title: 'Data Collection', content: data.dataCollection },
+    { num: '3', title: 'Data Reliance (Company)', content: data.dataReliance },
+    { num: '4', title: 'Data Driven', content: data.dataAttribute },
+    { num: '5', title: 'Data Ownership', content: data.dataOwnership },
+    { num: '6', title: 'Data Uniqueness', content: data.dataUniqueness },
+    { num: '7', title: 'Data Scarcity', content: data.dataScarcity },
+    { num: '8', title: 'Data Collection', content: data.dataCollection },
   ];
 
   let isFirstSection = true;
@@ -654,7 +661,12 @@ export async function generateSupplementaryPDFClient(
   };
 
   // ============ PAGE 1: COVER PAGE ============
-  drawCoverPage(doc, 'Data Profile &\nCompetitive Moat', orgName, data.sectorName);
+  drawCoverPage(
+    doc,
+    'Data Profile &\nCompetitive Moat',
+    orgName,
+    data.sectorName
+  );
 
   // ============ PAGE 2: TOC (placeholder, filled at end) ============
   doc.addPage();
@@ -994,7 +1006,10 @@ export async function generateSupplementaryPDFClient(
   doc.setFont('Geist', 'normal');
   doc.setTextColor(...BRAND_BLUE);
 
-  const lines = doc.splitTextToSize(data.qualitativeComparison, CONTENT_WIDTH_PX);
+  const lines = doc.splitTextToSize(
+    data.qualitativeComparison,
+    CONTENT_WIDTH_PX
+  );
   doc.text(lines, MARGIN_PX, yPos);
 
   // ============ BLUE END PAGE ============
@@ -1488,7 +1503,12 @@ export async function generateUnifiedADVPDFClient(
     yPos = MARGIN_PX + 30;
     drawHeaderBar(doc, yPos, 80);
     yPos += 20;
-    drawSectionBadge(doc, String(sectionNumber), 'Preliminary Data Valuation (PDV) Report', yPos);
+    drawSectionBadge(
+      doc,
+      String(sectionNumber),
+      'Preliminary Data Valuation (PDV) Report',
+      yPos
+    );
     sectionNumber++;
     yPos += 80;
 
@@ -1705,7 +1725,6 @@ export async function generateUnifiedADVPDFClient(
     addMdSection('Data Uniqueness', preADVData.dataUniqueness);
     addMdSection('Data Scarcity', preADVData.dataScarcity);
     addMdSection('Data Ownership', preADVData.dataOwnership);
-    addMdSection('Sector Data Reliance', preADVData.sectorReliance);
     addMdSection('Data Collection Methods', preADVData.dataCollection);
 
     // Pre-PDV Summary and table
@@ -1720,7 +1739,12 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(doc, String(sectionNumber), 'Competitive Advantages', yPos);
+    drawSectionBadge(
+      doc,
+      String(sectionNumber),
+      'Competitive Advantages',
+      yPos
+    );
     sectionNumber++;
     yPos += 80;
 
@@ -1816,7 +1840,12 @@ export async function generateUnifiedADVPDFClient(
 
     drawHeaderBar(doc, yPos, 80);
     yPos += 20;
-    drawSectionBadge(doc, String(sectionNumber), 'Data Profile & Competitive Moat Comparison', yPos);
+    drawSectionBadge(
+      doc,
+      String(sectionNumber),
+      'Data Profile & Competitive Moat Comparison',
+      yPos
+    );
     sectionNumber++;
     yPos += 80;
 
@@ -2160,7 +2189,12 @@ export async function generateUnifiedADVPDFClient(
       });
       yPos = MARGIN_PX + 30;
 
-      drawSectionBadge(doc, String(sectionNumber), 'Radar Chart Analysis', yPos);
+      drawSectionBadge(
+        doc,
+        String(sectionNumber),
+        'Radar Chart Analysis',
+        yPos
+      );
       sectionNumber++;
       yPos += 80;
 
@@ -2206,7 +2240,12 @@ export async function generateUnifiedADVPDFClient(
     });
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(doc, String(sectionNumber), 'Qualitative Analysis of Primary Competitive Moat', yPos);
+    drawSectionBadge(
+      doc,
+      String(sectionNumber),
+      'Qualitative Analysis of Primary Competitive Moat',
+      yPos
+    );
     sectionNumber++;
     yPos += 80;
 
@@ -2233,7 +2272,12 @@ export async function generateUnifiedADVPDFClient(
 
     drawHeaderBar(doc, yPos, 80);
     yPos += 20;
-    drawSectionBadge(doc, String(sectionNumber), 'Appendix: Pre-PDV Assessment', yPos);
+    drawSectionBadge(
+      doc,
+      String(sectionNumber),
+      'Appendix: Pre-PDV Assessment',
+      yPos
+    );
     sectionNumber++;
     yPos += 80;
 
@@ -2244,7 +2288,6 @@ export async function generateUnifiedADVPDFClient(
     addMdSection('Data Uniqueness', preADVData.dataUniqueness);
     addMdSection('Data Scarcity', preADVData.dataScarcity);
     addMdSection('Data Ownership', preADVData.dataOwnership);
-    addMdSection('Sector Data Reliance', preADVData.sectorReliance);
     addMdSection('Data Collection Methods', preADVData.dataCollection);
 
     // Add new page for competitive advantages
@@ -2252,7 +2295,12 @@ export async function generateUnifiedADVPDFClient(
     addPdvPageHeader(doc, orgName);
     yPos = MARGIN_PX + 30;
 
-    drawSectionBadge(doc, String(sectionNumber), 'Competitive Advantages', yPos);
+    drawSectionBadge(
+      doc,
+      String(sectionNumber),
+      'Competitive Advantages',
+      yPos
+    );
     sectionNumber++;
     yPos += 80;
 
