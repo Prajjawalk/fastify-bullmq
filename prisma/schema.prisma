@@ -478,6 +478,8 @@ model DataValuationReport {
   valuationMethodology    String?
   calculatedAt            DateTime?
   ivsCompliance           String?                     @db.Text // JSON array of IVS standards
+  ivscComplianceAnalysis  String?                     @db.Text // Full IVSC compliance analysis from LLM
+  ivscAnalysisGeneratedAt DateTime?                            // When the analysis was last generated
 
   // PDF data
   pdfReportData           String?                     @db.Text
@@ -663,6 +665,8 @@ model WorkflowModule {
   status     WorkflowModuleStatus @default(NOT_STARTED)
   progress   Int                  @default(0)
   settings   String?
+  stepLabel  String?
+  sortOrder  Int                  @default(0)
   createdAt  DateTime             @default(now())
   updatedAt  DateTime             @updatedAt
   workflowId String
@@ -1013,7 +1017,10 @@ model CommunityLead {
   socialTwitter        String?
   socialInstagram      String?
   socialYouTube        String?
-  referralCode         String?
+  referralCode         String?  // Code used when this user signed up (who referred them)
+
+  // Personal referral code (single permanent code for sharing)
+  personalReferralCode String?  @unique  // Format: REF-XXXXXX
 
   // Metadata
   onboardingCompleted  Boolean  @default(false)
@@ -1023,6 +1030,9 @@ model CommunityLead {
   // Referral tracking
   referralsMade        Referral[] @relation("ReferralsMade")
   referralsReceived    Referral[] @relation("ReferredCommunity")
+
+  // Earned badges
+  earnedBadges         CommunityLeadBadge[]
 
   // Meeting transcripts
   meetingTranscripts   MeetingTranscript[]
@@ -1251,8 +1261,8 @@ model Referral {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  // Referral code - unique for each referral
-  code              String   @unique
+  // Referral code - now links to personalReferralCode (not unique, same code for multiple referrals)
+  code              String   // The referrer's personal code used for this referral
 
   // Who is referring (the community member)
   referrerId        String
@@ -1282,6 +1292,9 @@ model Referral {
   referredEmail     String?  // Email of person/company being referred
   notes             String?  // Optional notes from referrer
 
+  // When the referral was accepted (user signed up with this code)
+  acceptedAt        DateTime?
+
   @@index([referrerId])
   @@index([referralType])
   @@index([status])
@@ -1295,6 +1308,10 @@ enum ReferralType {
   COMMUNITY_MEMBER
   COMPANY
   PROJECT
+  INVESTOR
+  PARTNER
+  CHANNEL_PARTNER
+  CARBON_PROJECT
 }
 
 enum ReferralStatus {
@@ -1302,6 +1319,43 @@ enum ReferralStatus {
   COMPLETED     // Referred entity has signed up
   CONVERTED     // Referred entity has been approved/onboarded
   EXPIRED       // Referral code expired or invalid
+}
+
+// Gamification badges for referrals
+model ReferralBadge {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  name          String   // "Bronze Referrer", "Silver Referrer", etc.
+  tier          Int      // 1, 2, 3, etc. (for ordering)
+  threshold     Int      // Minimum accepted referrals required
+  iconUrl       String?  // Badge icon URL
+  color         String?  // Badge color code (e.g., "#CD7F32" for bronze)
+  description   String?  // Description of the badge
+
+  // Earned by
+  earnedBy      CommunityLeadBadge[]
+
+  @@unique([tier])
+}
+
+// Junction table for community leads and their earned badges
+model CommunityLeadBadge {
+  id              String        @id @default(cuid())
+  createdAt       DateTime      @default(now())
+
+  communityLeadId String
+  communityLead   CommunityLead @relation(fields: [communityLeadId], references: [id], onDelete: Cascade)
+
+  badgeId         String
+  badge           ReferralBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  earnedAt        DateTime      @default(now())
+
+  @@unique([communityLeadId, badgeId])
+  @@index([communityLeadId])
+  @@index([badgeId])
 }
 
 model MeetingTranscript {
@@ -1359,10 +1413,27 @@ model MeetingTranscript {
   projectLeadId     String?
   projectLead       CommunityProjectLead? @relation(fields: [projectLeadId], references: [id], onDelete: SetNull)
 
+  // Relations to new lead types
+  investorLeadId    String?
+  investorLead      CommunityInvestorLead? @relation("InvestorMeetingTranscripts", fields: [investorLeadId], references: [id], onDelete: SetNull)
+
+  partnerLeadId     String?
+  partnerLead       CommunityPartnerLead? @relation("PartnerMeetingTranscripts", fields: [partnerLeadId], references: [id], onDelete: SetNull)
+
+  channelPartnerLeadId String?
+  channelPartnerLead   CommunityChannelPartnerLead? @relation("ChannelPartnerMeetingTranscripts", fields: [channelPartnerLeadId], references: [id], onDelete: SetNull)
+
+  carbonProjectLeadId String?
+  carbonProjectLead   CarbonProjectLead? @relation("CarbonProjectMeetingTranscripts", fields: [carbonProjectLeadId], references: [id], onDelete: SetNull)
+
   // Processing status
   processingStatus  MeetingProcessingStatus @default(RECEIVED)
   processedAt       DateTime?
   errorMessage      String?
+
+  // Imported via API key (for visibility control)
+  importedViaKeyId  String?
+  importedViaKey    FirefliesApiKey? @relation(fields: [importedViaKeyId], references: [id], onDelete: SetNull)
 
   @@index([firefliesMeetingId])
   @@index([organizerEmail])
@@ -1370,8 +1441,13 @@ model MeetingTranscript {
   @@index([communityLeadId])
   @@index([companyLeadId])
   @@index([projectLeadId])
+  @@index([investorLeadId])
+  @@index([partnerLeadId])
+  @@index([channelPartnerLeadId])
+  @@index([carbonProjectLeadId])
   @@index([processingStatus])
   @@index([createdAt])
+  @@index([importedViaKeyId])
 }
 
 enum MeetingProcessingStatus {
@@ -1380,6 +1456,29 @@ enum MeetingProcessingStatus {
   MATCHED       // Successfully matched to community member/company/project
   UNMATCHED     // Could not match to any entity
   FAILED        // Processing failed
+}
+
+// DocuSign Integration Enums
+enum DocuSignDocumentType {
+  ADVISOR_AGREEMENT
+  COMMUNITY_NDA
+  COMPANY_NDA
+}
+
+enum DocuSignEnvelopeStatus {
+  CREATED
+  SENT
+  DELIVERED
+  VIEWED
+  SIGNED
+  DECLINED
+  VOIDED
+}
+
+// Visibility options for meeting transcripts imported via an API key
+enum MeetingVisibility {
+  PUBLIC    // Everyone can see meetings from this key
+  PRIVATE   // Only ownerEmail can see meetings from this key
 }
 
 model FirefliesApiKey {
@@ -1402,8 +1501,16 @@ model FirefliesApiKey {
   createdById       String
   createdBy         User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
+  // Visibility control
+  ownerEmail        String?  // Email of key owner (for private visibility)
+  visibility        MeetingVisibility @default(PUBLIC)
+
+  // Meetings imported via this key
+  importedMeetings  MeetingTranscript[]
+
   @@index([createdById])
   @@index([isActive])
+  @@index([ownerEmail])
 }
 
 model ModuleBandingCache {
@@ -1419,21 +1526,380 @@ model ModuleBandingCache {
   @@index([generatedAt])
 }
 
-// DocuSign Integration Enums
-enum DocuSignDocumentType {
-  ADVISOR_AGREEMENT
-  COMMUNITY_NDA
-  COMPANY_NDA
+// ============ INVESTOR ONBOARDING ============
+
+enum InvestorType {
+  INVESTOR              // Seeking insured investment opportunities
+  GOVERNMENT_SOVEREIGN  // Government/Sovereign entity
+  REFINANCING_DERISK    // Seeking to refinance/de-risk existing portfolio
 }
 
-enum DocuSignEnvelopeStatus {
-  CREATED
-  SENT
-  DELIVERED
-  VIEWED
-  SIGNED
-  DECLINED
-  VOIDED
+model CommunityInvestorLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Referral & Contact
+  fullName              String
+  email                 String   @unique
+  mobileNumber          String
+  companyInstitution    String
+  role                  String
+  linkedIn              String?
+
+  // Communication Preferences
+  mobileContactMethod   String   // WhatsApp, Telegram, Signal, SMS, Other
+  videoCallPlatform     String   // Zoom, Teams, Google Meet, Webex, Other
+  preferredContactTimes String[] @default([]) // Morning, Afternoon, Evening
+  timeZone              String
+
+  // User Type
+  investorType          InvestorType
+
+  // ============ Section 1: Investor Fields ============
+  // Institution Profile
+  institutionType       String?  // PE, VC, Family Office, etc.
+  headquartersLocation  String?
+  institutionLinkedIn   String?
+
+  // Investment Mandate
+  aumRange              String?  // <$50M, $50-100M, $100M-500M, etc.
+  typicalInvestmentSize String?  // <$1M, $1-5M, $5-10M, etc.
+  targetReturns         String?  // <3%, 3-5%, 5-8%, etc.
+  investmentHorizon     String?  // 1-5 years, 5-10 years, etc.
+
+  // Investment Preferences
+  sectorsOfInterest     String[] @default([]) // Multi-select
+  structurePreferences  String[] @default([]) // Multi-select
+  riskProfile           String?  // Conservative, Moderate, Balanced, Growth, Aggressive
+  geographicFocus       String[] @default([]) // Multi-select regions
+  esgRequirements       String?  // Yes, No, Preferred
+  accreditedInvestor    Boolean?
+
+  // ============ Section 2: Government/Sovereign Fields ============
+  // Entity Profile
+  officialEntityName    String?
+  governmentLevel       String?  // National, State/Provincial, Municipal, Agency, Sovereign Fund
+  departmentMinistry    String?
+  officialWebsite       String?
+  jurisdiction          String?
+
+  // Initiative Scope
+  programType           String?  // National Infrastructure, Smart City, etc.
+  estimatedProgramValue String?  // $50-100M, $100-250M, etc.
+  implementationTimeline String?  // 6 months, 12 months, etc.
+  fundingStructurePreference String? // Direct Government, PPP, etc.
+
+  // Strategic Objectives
+  strategicObjectives   String[] @default([]) // Multi-select checkboxes
+  jobCreationTarget     String?  // If job creation selected
+
+  // Departmental Data Assets
+  departmentalDataAssets String[] @default([]) // Multi-select checkboxes
+  additionalInfo        String?
+
+  // ============ Section 3: Refinancing/De-Risk Fields ============
+  // Portfolio Overview
+  portfolioSize         String?  // <$10M, $10-50M, etc.
+  assetTypesForRefinancing String[] @default([]) // Multi-select
+  primaryMotivation     String?  // Risk Mitigation, Regulatory Compliance, etc.
+
+  // Current Risk Exposure
+  riskConcerns          String[] @default([]) // Multi-select
+  existingProtection    String?  // None, Traditional Insurance, etc.
+  previousProtectionAttempts String? // Never Explored, Quoted but Expensive, etc.
+
+  // Refinancing Requirements
+  desiredProtectionLevel String? // 70-80%, 80-90%, etc.
+  portfolioStatus       String?  // All Performing, Mostly Performing, etc.
+  refinancingTimeline   String?  // Immediate, 30 days, etc.
+  geographicDistribution String? // Single Country, Regional, etc.
+  decisionAuthority     String?  // My Decision, IC Approval, Board Approval
+
+  // Structural Preferences
+  structuralPreferences String[] @default([]) // Multi-select checkboxes
+  urgencyDrivers        String[] @default([]) // Multi-select checkboxes
+  additionalRequirements String?
+
+  // Metadata
+  submissionCompleted   Boolean  @default(false)
+  currentStep           Int      @default(1)
+  reviewStatus          String?  @default("pending")
+  referralCode          String?
+
+  // Meeting transcripts
+  meetingTranscripts    MeetingTranscript[] @relation("InvestorMeetingTranscripts")
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([investorType])
+  @@index([reviewStatus])
+}
+
+// ============ STRATEGIC PARTNER ONBOARDING ============
+
+model CommunityPartnerLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Section 1: Partner Organisation
+  legalCompanyName      String
+  tradingName           String?
+  companyRegistrationNumber String?
+  countryOfIncorporation String
+  registeredOfficeAddress String
+  companyWebsite        String
+  yearEstablished       String?
+  industrySectors       String[] @default([]) // Multi-select
+
+  // Section 2: Primary Contact
+  contactFullName       String
+  contactJobTitle       String
+  contactEmail          String   @unique
+  contactPhone          String
+  contactLinkedIn       String?
+
+  // Section 3: Partnership Coordinator
+  sameAsPrimaryContact  Boolean  @default(true)
+  coordinatorFullName   String?
+  coordinatorJobTitle   String?
+  coordinatorEmail      String?
+  coordinatorPhone      String?
+
+  // Section 4: What You Bring - Capabilities
+  capability1           String
+  capability2           String
+  capability3           String?
+  capability4           String?
+
+  // Section 5: Network & Client Base
+  clientTypes           String[] @default([]) // Multi-select
+  geographicRegions     String[] @default([]) // Multi-select
+
+  // Section 6: Partnership Interests
+  servicesInterest      String[] @default([]) // Multi-select
+
+  // Section 7: Partner Quote
+  partnerQuote          String?
+  quoteAttributionName  String?
+  quoteAttributionTitle String?
+  quotePermission       Boolean  @default(false)
+
+  // Section 8: Additional Information
+  howDidYouHear         String?
+  referralCode          String?
+  additionalNotes       String?
+
+  // Section 9: Confirmation
+  confirmInfoAccurate   Boolean  @default(false)
+  confirmAuthorised     Boolean  @default(false)
+  confirmMouUnderstand  Boolean  @default(false)
+  confirmContactConsent Boolean  @default(false)
+
+  // Declaration
+  declarationName       String?
+  declarationTitle      String?
+  declarationDate       DateTime?
+
+  // Metadata
+  submissionCompleted   Boolean  @default(false)
+  currentStep           Int      @default(1)
+  reviewStatus          String?  @default("pending")
+
+  // Meeting transcripts
+  meetingTranscripts    MeetingTranscript[] @relation("PartnerMeetingTranscripts")
+
+  @@index([contactEmail])
+  @@index([createdAt])
+  @@index([reviewStatus])
+}
+
+// ============ CHANNEL PARTNER ONBOARDING ============
+
+model CommunityChannelPartnerLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // P1: Partner Company Information
+  legalCompanyName      String
+  tradingName           String?
+  companyRegistrationNumber String
+  countryOfIncorporation String
+  entityType            String   // Ltd, LLC, Pty Ltd, Corp
+  registeredOfficeAddress String
+  principalPlaceOfBusiness String?
+  companyWebsite        String
+  yearEstablished       String?
+  industrySectors       String[] @default([]) // Multi-select
+  companyDescription    String
+
+  // P2: Primary Contact (Authorised Signatory)
+  contactFullName       String
+  contactJobTitle       String
+  contactEmail          String   @unique
+  contactPhone          String
+  contactLinkedIn       String?
+
+  // P3: Marketing Contact
+  sameAsPrimaryContact  Boolean  @default(true)
+  marketingFullName     String?
+  marketingJobTitle     String?
+  marketingEmail        String?
+  marketingPhone        String?
+
+  // P4: Partner Portal Access
+  sameAsPortalLogin     Boolean  @default(true)
+  preferredPortalEmail  String?
+  preferredReferralCode String?
+
+  // P5: Referral Fee Structure
+  feeTier               String?  // Standard, Strategic, Custom
+  proposedValuationFeePercent Float?
+  proposedIgiFeePercent Float?
+  proposedBundledFeePercent Float?
+  feeNotes              String?
+
+  // P6: Marketing Assets
+  assetsToProvide       String[] @default([]) // Multi-select checkboxes
+  websiteUrl            String?
+  linkedInCompanyPage   String?
+  twitterHandle         String?
+  otherSocialProfiles   String?
+
+  // P7: Partner Quote
+  partnerQuote          String?
+  quoteAttributionName  String?
+  quoteAttributionTitle String?
+  quotePermission       Boolean  @default(false)
+
+  // P8: Partnership Interests
+  clientTypes           String[] @default([]) // Multi-select
+  geographicRegions     String[] @default([]) // Multi-select
+  estimatedReferrals12Months String?
+  estimatedAvgDealSize  String?
+
+  // P9: Referral Source
+  referralSource        String?  // Direct intro, Existing client, etc.
+  referredByName        String?
+
+  // P10: Additional Information
+  whyInterestedInPartnering String?
+  additionalNotes       String?
+
+  // P11: Confirmation & Acknowledgements
+  confirmInfoAccurate   Boolean  @default(false)
+  confirmAuthorised     Boolean  @default(false)
+  confirmDocuSignUnderstand Boolean @default(false)
+  confirmMarketingAssets Boolean  @default(false)
+  confirmContactConsent Boolean  @default(false)
+
+  // Declaration
+  declarationName       String?
+  declarationTitle      String?
+  declarationDate       DateTime?
+
+  // Metadata
+  submissionCompleted   Boolean  @default(false)
+  currentStep           Int      @default(1)
+  reviewStatus          String?  @default("pending")
+
+  // Meeting transcripts
+  meetingTranscripts    MeetingTranscript[] @relation("ChannelPartnerMeetingTranscripts")
+
+  @@index([contactEmail])
+  @@index([createdAt])
+  @@index([reviewStatus])
+}
+
+// ============ CARBON PROJECT ONBOARDING ============
+
+enum CarbonProjectRole {
+  PROJECT_DEVELOPER
+  FUNDER_INVESTOR
+  CREDIT_BUYER
+  INTERMEDIARY_BROKER
+}
+
+model CarbonProjectLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Section 1: Role & Contact
+  role                  CarbonProjectRole
+  fullName              String
+  email                 String   @unique
+  phone                 String
+  organisation          String
+  position              String
+  linkedIn              String?
+
+  // Section 2: Project Basics
+  projectName           String
+  projectType           String   // REDD+, Afforestation, Soil Carbon, etc.
+  projectLocation       String
+  projectCountry        String
+  projectStage          String   // Concept, Validation, Verified, Issuing Credits
+  estimatedCreditsPerYear String
+  projectStartDate      DateTime?
+  expectedCreditsDate   DateTime?
+  projectDescription    String
+
+  // Section 3: Methodology & Standards
+  carbonStandard        String   // Verra VCS, Gold Standard, etc.
+  methodologyUsed       String?
+  validationBody        String?
+  verificationStatus    String?  // Not started, In progress, Completed
+  additionalCertifications String[] @default([]) // CCB, SD VISta, etc.
+
+  // Section 4: Commercial Terms
+  creditPriceExpectation String?
+  volumeAvailable       String?
+  deliveryTimeline      String?
+  paymentTermsPreference String?
+  existingBuyerContracts Boolean?
+  existingContractDetails String?
+
+  // Section 5: Risk Assessment
+  permanenceRisk        String?  // Low, Medium, High
+  leakageRisk           String?
+  additionality         String?
+  communityEngagement   String?
+  biodiversityImpact    String?
+  sdgAlignment          String[] @default([]) // UN SDG goals
+
+  // Section 6: Financial Information
+  totalProjectCost      String?
+  fundingSecured        String?
+  fundingGap            String?
+  revenueModel          String?
+  costPerCredit         String?
+  projectedAnnualRevenue String?
+
+  // Additional fields
+  referralCode          String?
+  additionalNotes       String?
+
+  // Declaration
+  declarationName       String?
+  declarationTitle      String?
+  declarationDate       DateTime?
+
+  // Metadata
+  submissionCompleted   Boolean  @default(false)
+  currentStep           Int      @default(1)
+  reviewStatus          String?  @default("pending")
+
+  // Meeting transcripts
+  meetingTranscripts    MeetingTranscript[] @relation("CarbonProjectMeetingTranscripts")
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([projectType])
+  @@index([reviewStatus])
+  @@index([role])
 }
 
 // DocuSign Envelope Tracking
