@@ -209,19 +209,18 @@ ${accumulatedContext}
 
 Estimate the data reliance percentage for ${orgName}. Data reliance measures how dependent the company's operations, revenue, and competitive advantage are on data assets.
 
-Provide a COMPREHENSIVE response with:
+Provide a CONCISE response with:
 1. **Percentage Estimate**: A specific percentage estimate (e.g., "75%")
 
-2. **Detailed Analysis** (around 1-2 paragraphs):
-   - How data drives their core business operations
-   - Revenue streams that depend on data
-   - Decision-making processes that rely on data
-   - Operational dependencies on data infrastructure
+2. **Detailed Analysis** (3-5 bullet points, each 1-2 sentences):
+   - How data drives core operations and revenue
+   - Key data dependencies in the business model
+   - Decision-making and infrastructure reliance on data
 
-3. **Key Factors**: List and explain 5-7 specific factors that influence this percentage for ${orgName}
+3. **Key Factors**: List 4-5 specific factors (as bullet points) that influence this percentage for ${orgName}
 
-Format with clear markdown headers (##) for each section.`,
-    { maxTokens: 2000, metricName: 'Data Reliance' }
+Keep the total response under 400 words. Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 1200, metricName: 'Data Reliance' }
   );
   console.log(
     `📊 [generatePrePDVData] Data Reliance response length: ${dataReliance.length} characters`
@@ -237,24 +236,22 @@ ${accumulatedContext}
 
 Estimate the data driven percentage for ${orgName}. Data driven measures what percentage of the company's business value can be directly attributed to their data assets.
 
-Provide a COMPREHENSIVE response with:
+Provide a CONCISE response with:
 1. **Percentage Estimate**: A specific percentage estimate (e.g., "70%")
 
-2. **Detailed Analysis** (around 1-2 paragraphs):
+2. **Detailed Analysis** (3-5 bullet points, each 1-2 sentences):
    - How data directly contributes to revenue generation
-   - Products or services that are data-driven
+   - Key data-driven products or services
    - Customer value derived from data capabilities
-   - Intellectual property value in data
 
-
-3. **Relationship to Data Reliance**: Explain how the data attribute percentage relates to their data reliance (${
+3. **Relationship to Data Reliance**: One sentence on how this relates to data reliance (${
       extractPercentageFromText(dataReliance) ?? 'previously estimated'
     }%)
 
-4. **Data driven Breakdown**: Break down the data drivers across different business areas
+4. **Data Driven Breakdown**: 3-4 bullet points breaking down drivers across business areas
 
-Format with clear markdown headers (##) for each section.`,
-    { maxTokens: 2000, metricName: 'Data Driven' }
+Keep the total response under 400 words. Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 1200, metricName: 'Data Driven' }
   );
   console.log(
     `📊 [generatePrePDVData] Data Driven response length: ${dataAttribute.length} characters`
@@ -270,27 +267,23 @@ ${accumulatedContext}
 
 Estimate the data uniqueness percentage for ${orgName}. Data uniqueness measures how unique and proprietary the company's data assets are compared to what competitors or the market can access.
 
-Provide a COMPREHENSIVE response with:
+Provide a CONCISE response with:
 1. **Percentage Estimate**: A specific percentage estimate (e.g., "60%")
 
-2. **Detailed Analysis** (around 1-2 paragraphs):
+2. **Detailed Analysis** (3-5 bullet points, each 1-2 sentences):
    - Proprietary data sources and collection methods
-   - Unique data types that competitors cannot access
-   - Data derived from exclusive partnerships or relationships
-   - Customer or user-generated unique data
+   - Unique data types competitors cannot access
+   - Exclusive partnerships or user-generated data advantages
 
-3. **Uniqueness Factors**:
-   - What makes their data different from competitors
-   - Barriers preventing competitors from replicating this data
-   - Time-based advantages in data accumulation
+3. **Uniqueness Factors** (3-4 bullet points):
+   - Key differentiators vs competitors
+   - Barriers to replication and time-based advantages
 
-4. **Commonality Assessment**:
-   - Data that is similar to industry standards
-   - Publicly available data components
-   - Shared industry data
+4. **Commonality Assessment** (2-3 bullet points):
+   - Industry-standard or publicly available data components
 
-Format with clear markdown headers (##) for each section.`,
-    { maxTokens: 2000, metricName: 'Data Uniqueness' }
+Keep the total response under 400 words. Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 1200, metricName: 'Data Uniqueness' }
   );
   console.log(
     `📊 [generatePrePDVData] Data Uniqueness response length: ${dataUniqueness.length} characters`
@@ -306,26 +299,22 @@ ${accumulatedContext}
 
 Estimate the data scarcity percentage for ${orgName}. Data scarcity measures how rare or difficult to replicate the company's data assets are in the market.
 
-Provide a COMPREHENSIVE response with:
+Provide a CONCISE response with:
 1. **Percentage Estimate**: A specific percentage estimate (e.g., "55%")
 
-2. **Detailed Analysis** (around 1-2 paragraphs):
+2. **Detailed Analysis** (3-5 bullet points, each 1-2 sentences):
    - Data that is inherently rare in the market
-   - Time and cost barriers to collecting similar data
-   - Regulatory or access barriers that create scarcity
+   - Time, cost, and regulatory barriers to collection
+   - Technical barriers to replication
 
-3. **Scarcity Factors**:
-   - Market conditions that create data scarcity
-   - Technical barriers to data replication
-   - Economic factors affecting data availability
+3. **Scarcity Factors** (3-4 bullet points):
+   - Key market and economic conditions creating scarcity
 
-4. **Abundance Assessment**:
-   - Data that is commonly available
-   - Data that can be purchased or licensed
-   - Data that competitors can easily obtain
+4. **Abundance Assessment** (2-3 bullet points):
+   - Commonly available or purchasable data components
 
-Format with clear markdown headers (##) for each section.`,
-    { maxTokens: 2000, metricName: 'Data Scarcity' }
+Keep the total response under 400 words. Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 1200, metricName: 'Data Scarcity' }
   );
   console.log(
     `📊 [generatePrePDVData] Data Scarcity response length: ${dataScarcity.length} characters`
@@ -341,30 +330,24 @@ ${accumulatedContext}
 
 Estimate the data ownership percentage for ${orgName}. Data ownership measures what percentage of their data assets they fully own and control, versus data that is licensed, shared, or has usage restrictions.
 
-Provide a COMPREHENSIVE response with:
+Provide a CONCISE response with:
 1. **Percentage Estimate**: A specific percentage estimate (e.g., "80%")
 
-2. **Detailed Analysis** (around 1-2 paragraphs):
-   - Data assets that are fully owned and controlled
-   - First-party data collection and ownership
+2. **Detailed Analysis** (3-5 bullet points, each 1-2 sentences):
+   - Fully owned data assets and first-party collection
    - Licensed or third-party data dependencies
-   - Data partnership arrangements and shared data
-   - Legal and contractual ownership considerations
-   - Geographic and regulatory ownership implications
+   - Legal and regulatory ownership considerations
 
-3. **Ownership Structure**:
+3. **Ownership Structure** (3-4 bullet points):
    - Breakdown of owned vs licensed vs shared data
-   - Key data licensing agreements or dependencies
    - Strategic importance of proprietary data
 
-4. **Limitations and Risks**:
-   - Usage restrictions on certain data
-   - Contractual limitations
-   - Regulatory constraints on data use
-   - Risks from data ownership gaps
+4. **Limitations and Risks** (2-3 bullet points):
+   - Key usage restrictions and contractual limitations
+   - Regulatory constraints and ownership gaps
 
-Format with clear markdown headers (##) for each section.`,
-    { maxTokens: 2000, metricName: 'Data Ownership' }
+Keep the total response under 400 words. Format with clear markdown headers (##) for each section.`,
+    { maxTokens: 1200, metricName: 'Data Ownership' }
   );
   console.log(
     `📊 [generatePrePDVData] Data Ownership response length: ${dataOwnership.length} characters`
@@ -378,14 +361,14 @@ Format with clear markdown headers (##) for each section.`,
     `Based on the following comprehensive context about ${orgName}:
 ${accumulatedContext}
 
-Provide a detailed analysis of the data collected by ${orgName}, including:
-1. Types of unique data they collect
-2. Environmental/ESG data considerations
-3. Data collection methods and sources
-4. How their data collection supports the metrics analyzed above
+Provide a concise analysis of the data collected by ${orgName} as 4-6 bullet points covering:
+- Types of unique data they collect
+- Environmental/ESG data considerations
+- Data collection methods and sources
+- How their data collection supports the metrics analyzed above
 
-Format as a professional paragraph.`,
-    { metricName: 'Data Collection' }
+Keep each bullet to 1-2 sentences. Total response under 200 words. Format with markdown bullet points (- ).`,
+    { maxTokens: 800, metricName: 'Data Collection' }
   );
   console.log(
     `📊 [generatePrePDVData] Data Collection response length: ${dataCollection.length} characters`
@@ -620,7 +603,7 @@ ${preADVData.overview ?? 'Not available'}
 Data Reliance Analysis:
 ${preADVData.dataReliance ?? 'Not available'}
 
-Data Attribution Analysis:
+Data Driven Analysis:
 ${preADVData.dataAttribute ?? 'Not available'}
 
 Data Uniqueness Analysis:
@@ -637,7 +620,7 @@ ${preADVData.dataCollection ?? 'Not available'}
 
 Extracted Metrics:
 - Data Reliance: ${preADVData.extractedMetrics?.dataReliancePercent ?? 'N/A'}%
-- Data Attribution: ${
+- Data Driven: ${
         preADVData.extractedMetrics?.dataAttributePercent ?? 'N/A'
       }%
 - Data Uniqueness: ${
@@ -676,14 +659,14 @@ Provide response in JSON format:
   "competitors": ["Competitor 1 Name", "Competitor 2 Name", "Competitor 3 Name", "Competitor 4 Name", "Competitor 5 Name"],
   "comparisonTable": [
     {"dataMetric": "Data Reliance", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
-    {"dataMetric": "Data Attribution", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
+    {"dataMetric": "Data Driven", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
     {"dataMetric": "Data Uniqueness", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
     {"dataMetric": "Data Scarcity", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
     {"dataMetric": "Data Ownership", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"}
   ],
-  "qualitativeComparison": "detailed multiparagraph text analysis of primary data moat including multiple pointers, referencing the Pre-PDV analysis findings and comparing against the 5 competitors",
+  "qualitativeComparison": "A concise analysis (max 150 words) structured as: one short intro sentence, then 4-6 bullet points (each starting with '- ') highlighting key competitive differentiators and data moat insights vs the 5 competitors. Keep each bullet to 1-2 sentences max.",
   "radarChartData": {
-    "dataMetrics": ["Data Reliance", "Data Attribution", "Data Uniqueness", "Data Scarcity", "Data Ownership"],
+    "dataMetrics": ["Data Reliance", "Data Driven", "Data Uniqueness", "Data Scarcity", "Data Ownership"],
     "organizationValues": [<numeric values matching extracted metrics>],
     "competitor1Values": [<numeric values for competitor 1>],
     "competitor2Values": [<numeric values for competitor 2>],

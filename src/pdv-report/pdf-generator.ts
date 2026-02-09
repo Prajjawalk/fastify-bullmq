@@ -279,10 +279,19 @@ function drawCoverPage(
 
 /** Add page header text on content pages */
 function addPdvPageHeader(doc: jsPDF, orgName: string): void {
+  // Save current state
+  const prevFontSize = doc.getFontSize();
+  const prevFont = doc.getFont();
+
   doc.setFontSize(9);
   doc.setFont('Geist', 'normal');
   doc.setTextColor(...TEXT_GRAY);
   doc.text(`PDV REPORT  ${orgName.toUpperCase()}`, MARGIN_PX, MARGIN_PX - 10);
+
+  // Restore previous state so callers don't get unexpected color/font changes
+  doc.setFontSize(prevFontSize);
+  doc.setFont(prevFont.fontName, prevFont.fontStyle);
+  doc.setTextColor(...BRAND_BLUE);
 }
 
 /** Add footers (line + page number) to all pages except cover and end */
@@ -340,7 +349,7 @@ function drawSectionBadge(
   const truncatedTitle = (doc.splitTextToSize(sectionTitle, maxTitleWidth) as string[])[0] ?? sectionTitle;
   doc.text(truncatedTitle, titleX, yPos + badgeSize / 2 + 7);
 
-  return yPos + badgeSize + 25;
+  return yPos + badgeSize + 40;
 }
 
 /** Draw a sky-tint header bar across the page */
@@ -808,7 +817,7 @@ export async function generateSupplementaryPDFClient(
       data.radarChartData.dataMetrics ??
       data.radarChartData['data metrics'] ?? [
         'Data Reliance',
-        'Data Attribution',
+        'Data Driven',
         'Data Uniqueness',
         'Data Scarcity',
         'Data Ownership',
@@ -1264,7 +1273,7 @@ export async function generateUnifiedADVPDFClient(
     doc.setTextColor(...BRAND_BLUE);
     doc.text(title, MARGIN_PX, yPos);
 
-    yPos += 37.8; // 10mm
+    yPos += 48; // ~12.7mm gap between heading and content
     doc.setFontSize(11);
     doc.setFont('Geist', 'normal');
     doc.setTextColor(...BRAND_BLUE);
@@ -1298,7 +1307,7 @@ export async function generateUnifiedADVPDFClient(
     doc.setTextColor(...BRAND_BLUE);
     doc.text(title, MARGIN_PX, yPos);
 
-    yPos += 37.8; // 10mm
+    yPos += 48; // ~12.7mm gap between heading and content
     doc.setTextColor(...BRAND_BLUE);
 
     // Parse markdown content line by line
@@ -1740,7 +1749,7 @@ export async function generateUnifiedADVPDFClient(
     // Add Pre-PDV sections
     addMdSection('Company Overview', preADVData.overview);
     addMdSection('Data Reliance Analysis', preADVData.dataReliance);
-    addMdSection('Data Attribution', preADVData.dataAttribute);
+    addMdSection('Data Driven', preADVData.dataAttribute);
     addMdSection('Data Uniqueness', preADVData.dataUniqueness);
     addMdSection('Data Scarcity', preADVData.dataScarcity);
     addMdSection('Data Ownership', preADVData.dataOwnership);
@@ -1993,7 +2002,7 @@ export async function generateUnifiedADVPDFClient(
         supplementaryData.radarChartData.dataMetrics ??
         supplementaryData.radarChartData['data metrics'] ?? [
           'Data Reliance',
-          'Data Attribution',
+          'Data Driven',
           'Data Uniqueness',
           'Data Scarcity',
           'Data Ownership',
@@ -2267,7 +2276,7 @@ export async function generateUnifiedADVPDFClient(
     // Add Pre-PDV sections
     addSection('Company Overview', preADVData.overview);
     addMdSection('Data Reliance Analysis', preADVData.dataReliance);
-    addMdSection('Data Attribution', preADVData.dataAttribute);
+    addMdSection('Data Driven', preADVData.dataAttribute);
     addMdSection('Data Uniqueness', preADVData.dataUniqueness);
     addMdSection('Data Scarcity', preADVData.dataScarcity);
     addMdSection('Data Ownership', preADVData.dataOwnership);
