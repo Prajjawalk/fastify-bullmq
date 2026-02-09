@@ -75,7 +75,9 @@ async function callClaude(
   console.log(`🤖 [Claude API] Starting call for: ${metricName}`);
   console.log(`📝 [Claude API] Prompt length: ${prompt.length} characters`);
   console.log(`⚙️ [Claude API] Max tokens: ${options?.maxTokens ?? 5000}`);
-  console.log(`🔧 [Claude API] Skip sanitization: ${options?.skipSanitization ?? false}`);
+  console.log(
+    `🔧 [Claude API] Skip sanitization: ${options?.skipSanitization ?? false}`
+  );
 
   const startTime = Date.now();
 
@@ -97,13 +99,17 @@ async function callClaude(
   console.log(`⏱️ [Claude API] Response received in ${elapsed}ms`);
   console.log(`📊 [Claude API] Stop reason: ${message.stop_reason}`);
   console.log(`📊 [Claude API] Content blocks: ${message.content.length}`);
-  console.log(`📊 [Claude API] Usage - Input tokens: ${message.usage.input_tokens}, Output tokens: ${message.usage.output_tokens}`);
+  console.log(
+    `📊 [Claude API] Usage - Input tokens: ${message.usage.input_tokens}, Output tokens: ${message.usage.output_tokens}`
+  );
 
   // Log all content blocks for debugging
   message.content.forEach((block, index) => {
     console.log(`📦 [Claude API] Block ${index}: type=${block.type}`);
     if (block.type === 'text' && 'text' in block) {
-      console.log(`📄 [Claude API] Text block length: ${block.text.length} characters`);
+      console.log(
+        `📄 [Claude API] Text block length: ${block.text.length} characters`
+      );
     } else if (block.type === 'tool_use' || block.type === 'server_tool_use') {
       console.log(`🔧 [Claude API] Tool use: ${JSON.stringify(block)}`);
     }
@@ -116,7 +122,9 @@ async function callClaude(
     .map((block) => ('text' in block ? block.text : ''))
     .join('');
 
-  console.log(`📊 [Claude API] Found ${textBlocks.length} text blocks, concatenated length: ${response.length} characters`);
+  console.log(
+    `📊 [Claude API] Found ${textBlocks.length} text blocks, concatenated length: ${response.length} characters`
+  );
 
   console.log(`\n📥 [Claude API] RAW RESPONSE for ${metricName}:`);
   console.log(`${'─'.repeat(60)}`);
@@ -127,7 +135,9 @@ async function callClaude(
   if (!options?.skipSanitization && !options?.jsonMode) {
     const originalLength = response.length;
     response = sanitizeResponse(response);
-    console.log(`🧹 [Claude API] Sanitized response: ${originalLength} → ${response.length} characters`);
+    console.log(
+      `🧹 [Claude API] Sanitized response: ${originalLength} → ${response.length} characters`
+    );
   }
 
   console.log(`✅ [Claude API] Completed: ${metricName}`);
@@ -172,7 +182,9 @@ async function generatePrePDVData(
   orgName: string
 ): Promise<string> {
   console.log(`\n${'█'.repeat(80)}`);
-  console.log(`🚀 [generatePrePDVData] Starting data generation for: ${orgName}`);
+  console.log(
+    `🚀 [generatePrePDVData] Starting data generation for: ${orgName}`
+  );
   console.log(`${'█'.repeat(80)}\n`);
 
   // Accumulated context from previous responses
@@ -211,17 +223,19 @@ Provide a COMPREHENSIVE response with:
 Format with clear markdown headers (##) for each section.`,
     { maxTokens: 2000, metricName: 'Data Reliance' }
   );
-  console.log(`📊 [generatePrePDVData] Data Reliance response length: ${dataReliance.length} characters`);
+  console.log(
+    `📊 [generatePrePDVData] Data Reliance response length: ${dataReliance.length} characters`
+  );
   accumulatedContext += `\n\n--- Data Reliance Analysis ---\n${dataReliance}`;
 
-  // Prompt 3: Data Attribute
-  console.log('\n📋 [generatePrePDVData] Step 3/9: Data Attribute');
+  // Prompt 3: Data Driven
+  console.log('\n📋 [generatePrePDVData] Step 3/9: Data Driven');
   const dataAttribute = await callClaude(
     client,
     `Based on the following context about ${orgName}:
 ${accumulatedContext}
 
-Estimate the data attribute percentage for ${orgName}. Data attribute measures what percentage of the company's business value can be directly attributed to their data assets.
+Estimate the data driven percentage for ${orgName}. Data driven measures what percentage of the company's business value can be directly attributed to their data assets.
 
 Provide a COMPREHENSIVE response with:
 1. **Percentage Estimate**: A specific percentage estimate (e.g., "70%")
@@ -237,13 +251,15 @@ Provide a COMPREHENSIVE response with:
       extractPercentageFromText(dataReliance) ?? 'previously estimated'
     }%)
 
-4. **Value Attribution Breakdown**: Break down the attribution across different business areas
+4. **Data driven Breakdown**: Break down the data drivers across different business areas
 
 Format with clear markdown headers (##) for each section.`,
-    { maxTokens: 2000, metricName: 'Data Attribute' }
+    { maxTokens: 2000, metricName: 'Data Driven' }
   );
-  console.log(`📊 [generatePrePDVData] Data Attribute response length: ${dataAttribute.length} characters`);
-  accumulatedContext += `\n\n--- Data Attribute Analysis ---\n${dataAttribute}`;
+  console.log(
+    `📊 [generatePrePDVData] Data Driven response length: ${dataAttribute.length} characters`
+  );
+  accumulatedContext += `\n\n--- Data Driven Analysis ---\n${dataAttribute}`;
 
   // Prompt 4: Data Uniqueness
   console.log('\n📋 [generatePrePDVData] Step 4/9: Data Uniqueness');
@@ -276,7 +292,9 @@ Provide a COMPREHENSIVE response with:
 Format with clear markdown headers (##) for each section.`,
     { maxTokens: 2000, metricName: 'Data Uniqueness' }
   );
-  console.log(`📊 [generatePrePDVData] Data Uniqueness response length: ${dataUniqueness.length} characters`);
+  console.log(
+    `📊 [generatePrePDVData] Data Uniqueness response length: ${dataUniqueness.length} characters`
+  );
   accumulatedContext += `\n\n--- Data Uniqueness Analysis ---\n${dataUniqueness}`;
 
   // Prompt 5: Data Scarcity
@@ -309,7 +327,9 @@ Provide a COMPREHENSIVE response with:
 Format with clear markdown headers (##) for each section.`,
     { maxTokens: 2000, metricName: 'Data Scarcity' }
   );
-  console.log(`📊 [generatePrePDVData] Data Scarcity response length: ${dataScarcity.length} characters`);
+  console.log(
+    `📊 [generatePrePDVData] Data Scarcity response length: ${dataScarcity.length} characters`
+  );
   accumulatedContext += `\n\n--- Data Scarcity Analysis ---\n${dataScarcity}`;
 
   // Prompt 6: Data Ownership
@@ -346,26 +366,10 @@ Provide a COMPREHENSIVE response with:
 Format with clear markdown headers (##) for each section.`,
     { maxTokens: 2000, metricName: 'Data Ownership' }
   );
-  console.log(`📊 [generatePrePDVData] Data Ownership response length: ${dataOwnership.length} characters`);
-  accumulatedContext += `\n\n--- Data Ownership Analysis ---\n${dataOwnership}`;
-
-  // Prompt 7: Sector Reliance
-  console.log('\n📋 [generatePrePDVData] Step 7/9: Sector Reliance');
-  const sectorReliance = await callClaude(
-    client,
-    `Based on the following context about ${orgName}:
-${accumulatedContext}
-
-What is the typical data reliance percentage for the sector that ${orgName} operates in? Compare ${orgName}'s data reliance to the sector average.
-
-Provide:
-1. The sector/industry name
-2. Typical sector data reliance percentage
-3. How ${orgName} compares to sector average`,
-    { metricName: 'Sector Reliance' }
+  console.log(
+    `📊 [generatePrePDVData] Data Ownership response length: ${dataOwnership.length} characters`
   );
-  console.log(`📊 [generatePrePDVData] Sector Reliance response length: ${sectorReliance.length} characters`);
-  accumulatedContext += `\n\n--- Sector Reliance Analysis ---\n${sectorReliance}`;
+  accumulatedContext += `\n\n--- Data Ownership Analysis ---\n${dataOwnership}`;
 
   // Prompt 8: Data Collection Analysis (with full context)
   console.log('\n📋 [generatePrePDVData] Step 8/9: Data Collection');
@@ -383,7 +387,9 @@ Provide a detailed analysis of the data collected by ${orgName}, including:
 Format as a professional paragraph.`,
     { metricName: 'Data Collection' }
   );
-  console.log(`📊 [generatePrePDVData] Data Collection response length: ${dataCollection.length} characters`);
+  console.log(
+    `📊 [generatePrePDVData] Data Collection response length: ${dataCollection.length} characters`
+  );
   accumulatedContext += `\n\n--- Data Collection Analysis ---\n${dataCollection}`;
 
   // Prompt 9: Data Summary with Table (with full context)
@@ -424,7 +430,9 @@ Respond with ONLY the JSON object, no other text.`,
       metricName: 'Data Summary JSON',
     }
   );
-  console.log(`📊 [generatePrePDVData] Summary JSON raw length: ${summaryRaw.length} characters`);
+  console.log(
+    `📊 [generatePrePDVData] Summary JSON raw length: ${summaryRaw.length} characters`
+  );
 
   let summaryJson: {
     summary: string;
@@ -444,17 +452,44 @@ Respond with ONLY the JSON object, no other text.`,
   };
   try {
     const extractedJson = extractJSON(summaryRaw);
-    console.log(`📋 [generatePrePDVData] Extracted JSON length: ${extractedJson.length} characters`);
-    console.log(`📋 [generatePrePDVData] Extracted JSON preview: ${extractedJson.substring(0, 500)}...`);
+    console.log(
+      `📋 [generatePrePDVData] Extracted JSON length: ${extractedJson.length} characters`
+    );
+    console.log(
+      `📋 [generatePrePDVData] Extracted JSON preview: ${extractedJson.substring(
+        0,
+        500
+      )}...`
+    );
     summaryJson = JSON.parse(extractedJson);
     console.log(`✅ [generatePrePDVData] JSON parsed successfully`);
-    console.log(`📋 [generatePrePDVData] Summary length: ${summaryJson.summary?.length ?? 0} characters`);
-    console.log(`📋 [generatePrePDVData] Competitive advantages count: ${summaryJson.competitiveAdvantages?.length ?? 0}`);
-    console.log(`📋 [generatePrePDVData] Data profile table count: ${summaryJson.dataProfileTable?.length ?? 0}`);
-    console.log(`📋 [generatePrePDVData] Extracted metrics:`, JSON.stringify(summaryJson.extractedMetrics, null, 2));
+    console.log(
+      `📋 [generatePrePDVData] Summary length: ${
+        summaryJson.summary?.length ?? 0
+      } characters`
+    );
+    console.log(
+      `📋 [generatePrePDVData] Competitive advantages count: ${
+        summaryJson.competitiveAdvantages?.length ?? 0
+      }`
+    );
+    console.log(
+      `📋 [generatePrePDVData] Data profile table count: ${
+        summaryJson.dataProfileTable?.length ?? 0
+      }`
+    );
+    console.log(
+      `📋 [generatePrePDVData] Extracted metrics:`,
+      JSON.stringify(summaryJson.extractedMetrics, null, 2)
+    );
   } catch (parseError) {
-    console.error(`❌ [generatePrePDVData] Failed to parse summary JSON:`, parseError);
-    console.error(`📋 [generatePrePDVData] Raw summary that failed to parse: ${summaryRaw}`);
+    console.error(
+      `❌ [generatePrePDVData] Failed to parse summary JSON:`,
+      parseError
+    );
+    console.error(
+      `📋 [generatePrePDVData] Raw summary that failed to parse: ${summaryRaw}`
+    );
     summaryJson = {
       summary: '',
       competitiveAdvantages: [],
@@ -463,12 +498,34 @@ Respond with ONLY the JSON object, no other text.`,
   }
 
   // Extract percentages from text responses as fallback
-  console.log(`\n📊 [generatePrePDVData] Extracting percentages from text responses...`);
-  console.log(`📊 [generatePrePDVData] Data Reliance text extraction: ${extractPercentageFromText(dataReliance)}`);
-  console.log(`📊 [generatePrePDVData] Data Attribute text extraction: ${extractPercentageFromText(dataAttribute)}`);
-  console.log(`📊 [generatePrePDVData] Data Uniqueness text extraction: ${extractPercentageFromText(dataUniqueness)}`);
-  console.log(`📊 [generatePrePDVData] Data Scarcity text extraction: ${extractPercentageFromText(dataScarcity)}`);
-  console.log(`📊 [generatePrePDVData] Data Ownership text extraction: ${extractPercentageFromText(dataOwnership)}`);
+  console.log(
+    `\n📊 [generatePrePDVData] Extracting percentages from text responses...`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Reliance text extraction: ${extractPercentageFromText(
+      dataReliance
+    )}`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Attribute text extraction: ${extractPercentageFromText(
+      dataAttribute
+    )}`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Uniqueness text extraction: ${extractPercentageFromText(
+      dataUniqueness
+    )}`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Scarcity text extraction: ${extractPercentageFromText(
+      dataScarcity
+    )}`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Ownership text extraction: ${extractPercentageFromText(
+      dataOwnership
+    )}`
+  );
 
   const extractedMetrics = {
     dataReliancePercent:
@@ -505,15 +562,33 @@ Respond with ONLY the JSON object, no other text.`,
   };
 
   console.log(`\n${'█'.repeat(80)}`);
-  console.log(`✅ [generatePrePDVData] Completed data generation for: ${orgName}`);
-  console.log(`📊 [generatePrePDVData] Overview length: ${overviewText.length} chars`);
-  console.log(`📊 [generatePrePDVData] Data Reliance length: ${dataReliance.length} chars`);
-  console.log(`📊 [generatePrePDVData] Data Attribute length: ${dataAttribute.length} chars`);
-  console.log(`📊 [generatePrePDVData] Data Uniqueness length: ${dataUniqueness.length} chars`);
-  console.log(`📊 [generatePrePDVData] Data Scarcity length: ${dataScarcity.length} chars`);
-  console.log(`📊 [generatePrePDVData] Data Ownership length: ${dataOwnership.length} chars`);
-  console.log(`📊 [generatePrePDVData] Sector Reliance length: ${sectorReliance.length} chars`);
-  console.log(`📊 [generatePrePDVData] Data Collection length: ${dataCollection.length} chars`);
+  console.log(
+    `✅ [generatePrePDVData] Completed data generation for: ${orgName}`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Overview length: ${overviewText.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Reliance length: ${dataReliance.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Attribute length: ${dataAttribute.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Uniqueness length: ${dataUniqueness.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Scarcity length: ${dataScarcity.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Ownership length: ${dataOwnership.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Sector Reliance length: ${sectorReliance.length} chars`
+  );
+  console.log(
+    `📊 [generatePrePDVData] Data Collection length: ${dataCollection.length} chars`
+  );
   console.log(`${'█'.repeat(80)}\n`);
 
   return JSON.stringify(preADVData);
@@ -536,7 +611,6 @@ async function generateSupplementaryData(
         dataUniqueness?: string;
         dataScarcity?: string;
         dataOwnership?: string;
-        sectorReliance?: string;
         dataCollection?: string;
         extractedMetrics?: PreADVExtractedMetrics;
       };
@@ -562,9 +636,6 @@ ${preADVData.dataScarcity ?? 'Not available'}
 Data Ownership Analysis:
 ${preADVData.dataOwnership ?? 'Not available'}
 
-Sector Reliance Analysis:
-${preADVData.sectorReliance ?? 'Not available'}
-
 Data Collection Analysis:
 ${preADVData.dataCollection ?? 'Not available'}
 
@@ -587,34 +658,42 @@ Extracted Metrics:
   }
 
   console.log(`\n${'█'.repeat(80)}`);
-  console.log(`🚀 [generateSupplementaryData] Starting supplementary data generation for: ${orgName}`);
-  console.log(`📊 [generateSupplementaryData] PreADV context length: ${preADVContext.length} characters`);
+  console.log(
+    `🚀 [generateSupplementaryData] Starting supplementary data generation for: ${orgName}`
+  );
+  console.log(
+    `📊 [generateSupplementaryData] PreADV context length: ${preADVContext.length} characters`
+  );
   console.log(`${'█'.repeat(80)}\n`);
 
   const comparisonRaw = await callClaude(
     client,
     `${preADVContext}
 
-For ${orgName}, create a comprehensive Data Profile and Competitive Moat comparison with their sector and geography across 5 data metrics - data reliance, data attribution, data uniqueness, data scarcity, and data ownership percentages.
+For ${orgName}, identify the 5 closest competitors in the same sector and create a comprehensive Data Profile and Competitive Moat comparison across 5 data metrics - data reliance, data attribution, data uniqueness, data scarcity, and data ownership percentages.
 
-IMPORTANT: Use the metrics from the Pre-PDV Analysis Context above to ensure consistency. The organization values in the comparison should match the extracted metrics.
+IMPORTANT: Use the metrics from the Pre-PDV Analysis Context above to ensure consistency. The organization values in the comparison should match the extracted metrics. Name the 5 closest real competitors in the same sector.
 
 Provide response in JSON format:
 {
   "sectorName": "sector name",
-  "geographyName": "geography",
+  "competitors": ["Competitor 1 Name", "Competitor 2 Name", "Competitor 3 Name", "Competitor 4 Name", "Competitor 5 Name"],
   "comparisonTable": [
-    {"dataMetric": "Data Reliance", "organizationValue": "<use extracted metric>%", "sectorValue": "value%", "geographyValue": "value%"},
-    {"dataMetric": "Data Attribution", "organizationValue": "<use extracted metric>%", "sectorValue": "value%", "geographyValue": "value%"},
-    {"dataMetric": "Data Uniqueness", "organizationValue": "<use extracted metric>%", "sectorValue": "value%", "geographyValue": "value%"},
-    {"dataMetric": "Data Scarcity", "organizationValue": "<use extracted metric>%", "sectorValue": "value%", "geographyValue": "value%"},
-    {"dataMetric": "Data Ownership", "organizationValue": "<use extracted metric>%", "sectorValue": "value%", "geographyValue": "value%"}
+    {"dataMetric": "Data Reliance", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
+    {"dataMetric": "Data Attribution", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
+    {"dataMetric": "Data Uniqueness", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
+    {"dataMetric": "Data Scarcity", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"},
+    {"dataMetric": "Data Ownership", "organizationValue": "<use extracted metric>%", "competitor1Value": "value%", "competitor2Value": "value%", "competitor3Value": "value%", "competitor4Value": "value%", "competitor5Value": "value%"}
   ],
-  "qualitativeComparison": "detailed multiparagraph text analysis of primary data moat including multiple pointers, referencing the Pre-PDV analysis findings",
+  "qualitativeComparison": "detailed multiparagraph text analysis of primary data moat including multiple pointers, referencing the Pre-PDV analysis findings and comparing against the 5 competitors",
   "radarChartData": {
     "dataMetrics": ["Data Reliance", "Data Attribution", "Data Uniqueness", "Data Scarcity", "Data Ownership"],
     "organizationValues": [<numeric values matching extracted metrics>],
-    "sectorValues": [<numeric sector average values>]
+    "competitor1Values": [<numeric values for competitor 1>],
+    "competitor2Values": [<numeric values for competitor 2>],
+    "competitor3Values": [<numeric values for competitor 3>],
+    "competitor4Values": [<numeric values for competitor 4>],
+    "competitor5Values": [<numeric values for competitor 5>]
   }
 }
 
@@ -627,27 +706,53 @@ Respond with ONLY the JSON object, no other text.`,
     }
   );
 
-  console.log(`📊 [generateSupplementaryData] Comparison JSON raw length: ${comparisonRaw.length} characters`);
+  console.log(
+    `📊 [generateSupplementaryData] Comparison JSON raw length: ${comparisonRaw.length} characters`
+  );
 
   let comparisonJson: Record<string, unknown>;
   try {
     const extractedJson = extractJSON(comparisonRaw);
-    console.log(`📋 [generateSupplementaryData] Extracted JSON length: ${extractedJson.length} characters`);
+    console.log(
+      `📋 [generateSupplementaryData] Extracted JSON length: ${extractedJson.length} characters`
+    );
     comparisonJson = JSON.parse(extractedJson);
     console.log(`✅ [generateSupplementaryData] JSON parsed successfully`);
-    console.log(`📊 [generateSupplementaryData] Sector name: ${comparisonJson.sectorName}`);
-    console.log(`📊 [generateSupplementaryData] Geography: ${comparisonJson.geographyName}`);
-    console.log(`📊 [generateSupplementaryData] Comparison table entries: ${(comparisonJson.comparisonTable as unknown[])?.length ?? 0}`);
-    console.log(`📊 [generateSupplementaryData] Qualitative comparison length: ${(comparisonJson.qualitativeComparison as string)?.length ?? 0} chars`);
-    console.log(`📊 [generateSupplementaryData] Radar chart data:`, JSON.stringify(comparisonJson.radarChartData, null, 2));
+    console.log(
+      `📊 [generateSupplementaryData] Sector name: ${comparisonJson.sectorName}`
+    );
+    console.log(
+      `📊 [generateSupplementaryData] Geography: ${comparisonJson.geographyName}`
+    );
+    console.log(
+      `📊 [generateSupplementaryData] Comparison table entries: ${
+        (comparisonJson.comparisonTable as unknown[])?.length ?? 0
+      }`
+    );
+    console.log(
+      `📊 [generateSupplementaryData] Qualitative comparison length: ${
+        (comparisonJson.qualitativeComparison as string)?.length ?? 0
+      } chars`
+    );
+    console.log(
+      `📊 [generateSupplementaryData] Radar chart data:`,
+      JSON.stringify(comparisonJson.radarChartData, null, 2)
+    );
   } catch (parseError) {
-    console.error(`❌ [generateSupplementaryData] Failed to parse comparison JSON:`, parseError);
-    console.error(`📋 [generateSupplementaryData] Raw comparison that failed to parse: ${comparisonRaw}`);
+    console.error(
+      `❌ [generateSupplementaryData] Failed to parse comparison JSON:`,
+      parseError
+    );
+    console.error(
+      `📋 [generateSupplementaryData] Raw comparison that failed to parse: ${comparisonRaw}`
+    );
     comparisonJson = {};
   }
 
   console.log(`\n${'█'.repeat(80)}`);
-  console.log(`✅ [generateSupplementaryData] Completed supplementary data generation`);
+  console.log(
+    `✅ [generateSupplementaryData] Completed supplementary data generation`
+  );
   console.log(`${'█'.repeat(80)}\n`);
 
   return JSON.stringify(comparisonJson);
@@ -1089,7 +1194,7 @@ function generateEmailHTML(reportTitle: string, orgName: string): string {
             <p>Your <strong>${reportTitle}</strong> for ${orgName} has been generated and is attached to this email.</p>
             <p>The report contains a comprehensive assessment of your data assets including:</p>
             <ul>
-              <li>Asset Data Valuation (PDV) calculations</li>
+              <li>Preliminary Data Valuation (PDV) calculations</li>
               <li>Preliminary Data Valuation questionnaire results</li>
               <li>Competitive analysis and market positioning</li>
               <li>Strategic recommendations</li>
@@ -1115,7 +1220,7 @@ Hello,
 Your ${reportTitle} for ${orgName} has been generated and is attached to this email.
 
 The report contains a comprehensive assessment of your data assets including:
-- Asset Data Valuation (PDV) calculations
+- Preliminary Data Valuation (PDV) calculations
 - Preliminary Data Valuation questionnaire results
 - Competitive analysis and market positioning
 - Strategic recommendations
