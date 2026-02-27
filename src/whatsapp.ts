@@ -3,7 +3,9 @@ import makeWASocket, {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   type WASocket,
+  type WAMessage,
   type ConnectionState,
+  type MessageUpsertType,
   getContentType,
   downloadMediaMessage,
 } from '@whiskeysockets/baileys';
@@ -293,50 +295,44 @@ export class WhatsAppService {
       const messageHandler = async ({
         messages,
       }: {
-        messages: Array<{
-          key: { remoteJid?: string | null; id?: string | null; fromMe?: boolean | null; participant?: string | null };
-          message?: Record<string, unknown> | null;
-          messageTimestamp?: number | Long | null;
-          pushName?: string | null;
-        }>;
+        messages: WAMessage[];
+        type: MessageUpsertType;
+        requestId?: string;
       }) => {
         for (const msg of messages) {
           if (msg.key.remoteJid !== whatsappGroupId) continue;
           if (!msg.message) continue;
 
-          const contentType = getContentType(
-            msg.message as Parameters<typeof getContentType>[0]
-          );
+          const contentType = getContentType(msg.message);
           if (!contentType) continue;
 
           // Determine message type
           let messageType = 'text';
           let content: string | null = null;
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const msgAny = msg.message as any;
+
           switch (contentType) {
             case 'conversation':
               messageType = 'text';
-              content = (msg.message as Record<string, string>)[contentType] ?? null;
+              content = (msgAny.conversation as string) ?? null;
               break;
             case 'extendedTextMessage':
               messageType = 'text';
-              content =
-                (msg.message.extendedTextMessage as Record<string, string> | undefined)?.text ?? null;
+              content = (msgAny.extendedTextMessage?.text as string) ?? null;
               break;
             case 'imageMessage':
               messageType = 'image';
-              content =
-                (msg.message.imageMessage as Record<string, string> | undefined)?.caption ?? null;
+              content = (msgAny.imageMessage?.caption as string) ?? null;
               break;
             case 'videoMessage':
               messageType = 'video';
-              content =
-                (msg.message.videoMessage as Record<string, string> | undefined)?.caption ?? null;
+              content = (msgAny.videoMessage?.caption as string) ?? null;
               break;
             case 'documentMessage':
               messageType = 'document';
-              content =
-                (msg.message.documentMessage as Record<string, string> | undefined)?.fileName ?? null;
+              content = (msgAny.documentMessage?.fileName as string) ?? null;
               break;
             case 'audioMessage':
               messageType = 'audio';
@@ -401,7 +397,7 @@ export class WhatsAppService {
             msg.message
           ) {
             try {
-              const mediaMsg = msg.message[contentType] as Record<string, unknown> | undefined;
+              const mediaMsg = msgAny[contentType];
               const mimeType = (mediaMsg?.mimetype as string) ?? null;
               const fileName = (mediaMsg?.fileName as string) ?? null;
               const fileSize = (mediaMsg?.fileLength as number) ?? null;
