@@ -49,6 +49,8 @@
     "@fastify/cors": "^11.1.0",
     "@fastify/sse": "^0.4.0",
     "@prisma/client": "^6.19.1",
+    "@types/qrcode": "^1.5.6",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "bullmq": "^5.63.0",
     "canvas": "^3.2.1",
     "chart.js": "^4.5.1",
@@ -57,6 +59,7 @@
     "jose": "^6.1.0",
     "jspdf": "^4.0.0",
     "postmark": "^4.0.5",
-    "prisma": "^6.19.1"
+    "prisma": "^6.19.1",
+    "qrcode": "^1.5.4"
   }
 }

@@ -251,6 +251,53 @@ model QuestionComment {
   @@index([isRead])
 }
 
+model ReportPageComment {
+  id         String              @id @default(cuid())
+  comment    String              @db.Text
+  reportId   String
+  pageNumber Int
+  workflowId String
+  userId     String
+  isRead     Boolean             @default(false)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  report     DataValuationReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  workflow   Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([reportId, pageNumber])
+  @@index([workflowId])
+  @@index([userId])
+  @@index([isRead])
+}
+
+enum AnnotationType {
+  HIGHLIGHT
+  FREEHAND
+  TEXT_NOTE
+}
+
+model ReportPageAnnotation {
+  id         String              @id @default(cuid())
+  reportId   String
+  pageNumber Int
+  workflowId String
+  userId     String
+  type       AnnotationType
+  data       String              @db.Text
+  color      String              @default("#FFFF00")
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  report     DataValuationReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  workflow   Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, pageNumber])
+  @@index([workflowId])
+  @@index([userId])
+}
+
 model Organization {
   id                       String                     @id @default(cuid())
   name                     String
@@ -507,6 +554,8 @@ model DataValuationReport {
   approvedBy              User?                       @relation("DataValuationReport_approvedBy", fields: [approvedById], references: [id])
   platformId              String?
   platform                Platform?                   @relation(fields: [platformId], references: [id])
+  reportPageComments      ReportPageComment[]
+  reportPageAnnotations   ReportPageAnnotation[]
 
   @@index([workflowId])
   @@index([status])
@@ -555,6 +604,8 @@ model User {
   invitedLeads               Lead[]                   @relation("InvitedLeads")
   Answer                     Answer[]
   questionComments           QuestionComment[]
+  reportPageComments         ReportPageComment[]
+  reportPageAnnotations      ReportPageAnnotation[]
   SuperAdmin                 SuperAdmin?
   PlatformUser               PlatformUser?
   PlatformInviters           PlatformInvitation[]     @relation("PlatformInvitation_inviter")
@@ -596,6 +647,8 @@ model Workflow {
   platform              Platform?              @relation(fields: [platformId], references: [id])
   Answer                Answer[]
   questionComments      QuestionComment[]
+  reportPageComments    ReportPageComment[]
+  reportPageAnnotations ReportPageAnnotation[]
   ModuleSignatures      ModuleSignatures[]
   Form                  Form[]
   payments              Payment[]
@@ -1065,7 +1118,7 @@ model CommunityProjectLead {
 
   // B1: Project Sponsor Information - Sponsor Company Details
   legalCompanyName           String
-  companyRegistrationNumber  String
+  companyRegistrationNumber  String?
   dateCompanyFormed          DateTime
   registeredAddress          String
   tradingAddress             String?
@@ -1157,11 +1210,17 @@ model CommunityProjectLead {
   requestedDocumentsList     String[] @default([]) // List of document names requested
   uploadedDocuments          Json? // {documentName: s3Url or serialized document}
 
+  // NDA
+  country                    String?
+  ndaStatus                  DocuSignEnvelopeStatus?
+  ndaSignedAt                DateTime?
+
   // Referral tracking
   referralsReceived          Referral[] @relation("ReferredProject")
 
   // Meeting transcripts
   meetingTranscripts         MeetingTranscript[]
+  docuSignEnvelopes          DocuSignEnvelope[]
 
   @@index([companyEmail])
   @@index([createdAt])
@@ -1426,6 +1485,12 @@ model MeetingTranscript {
   carbonProjectLeadId String?
   carbonProjectLead   CarbonProjectLead? @relation("CarbonProjectMeetingTranscripts", fields: [carbonProjectLeadId], references: [id], onDelete: SetNull)
 
+  sovereignEntityLeadId String?
+  sovereignEntityLead   SovereignEntityLead? @relation("SovereignEntityMeetingTranscripts", fields: [sovereignEntityLeadId], references: [id], onDelete: SetNull)
+
+  deRiskPortfolioLeadId String?
+  deRiskPortfolioLead   DeRiskPortfolioLead? @relation("DeRiskPortfolioMeetingTranscripts", fields: [deRiskPortfolioLeadId], references: [id], onDelete: SetNull)
+
   // Processing status
   processingStatus  MeetingProcessingStatus @default(RECEIVED)
   processedAt       DateTime?
@@ -1445,6 +1510,8 @@ model MeetingTranscript {
   @@index([partnerLeadId])
   @@index([channelPartnerLeadId])
   @@index([carbonProjectLeadId])
+  @@index([sovereignEntityLeadId])
+  @@index([deRiskPortfolioLeadId])
   @@index([processingStatus])
   @@index([createdAt])
   @@index([importedViaKeyId])
@@ -1627,12 +1694,135 @@ model CommunityInvestorLead {
   reviewStatus          String?  @default("pending")
   referralCode          String?
 
+  // NDA
+  companyAddress            String?
+  companyRegistrationNumber String?
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
   // Meeting transcripts
   meetingTranscripts    MeetingTranscript[] @relation("InvestorMeetingTranscripts")
+  docuSignEnvelopes     DocuSignEnvelope[]
 
   @@index([email])
   @@index([createdAt])
   @@index([investorType])
+  @@index([reviewStatus])
+}
+
+// ============ SOVEREIGN ENTITY ONBOARDING ============
+
+model SovereignEntityLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Contact (shared)
+  fullName            String
+  email               String   @unique
+  mobileNumber        String
+  companyInstitution  String
+  role                String
+  linkedIn            String?
+
+  // Communication Preferences (shared)
+  mobileContactMethod    String
+  videoCallPlatform      String
+  preferredContactTimes  String[]
+  timeZone               String
+
+  // Government/Sovereign-specific
+  officialEntityName          String?
+  governmentLevel             String?
+  departmentMinistry          String?
+  officialWebsite             String?
+  jurisdiction                String?
+  programType                 String?
+  estimatedProgramValue       String?
+  implementationTimeline      String?
+  fundingStructurePreference  String?
+  strategicObjectives         String[]
+  jobCreationTarget           String?
+  departmentalDataAssets      String[]
+  additionalInfo              String?
+
+  // Metadata
+  submissionCompleted Boolean  @default(false)
+  currentStep         Int      @default(1)
+  reviewStatus        String?  @default("pending")
+  referralCode        String?
+
+  // NDA
+  companyAddress            String?
+  companyRegistrationNumber String?
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
+  // Meeting transcripts
+  meetingTranscripts MeetingTranscript[] @relation("SovereignEntityMeetingTranscripts")
+  docuSignEnvelopes  DocuSignEnvelope[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([reviewStatus])
+}
+
+// ============ DE-RISK PORTFOLIO ONBOARDING ============
+
+model DeRiskPortfolioLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Contact (shared)
+  fullName            String
+  email               String   @unique
+  mobileNumber        String
+  companyInstitution  String
+  role                String
+  linkedIn            String?
+
+  // Communication Preferences (shared)
+  mobileContactMethod    String
+  videoCallPlatform      String
+  preferredContactTimes  String[]
+  timeZone               String
+
+  // Refinancing/De-Risk-specific
+  portfolioSize               String?
+  assetTypesForRefinancing     String[]
+  primaryMotivation           String?
+  riskConcerns                String[]
+  existingProtection          String?
+  previousProtectionAttempts  String?
+  desiredProtectionLevel      String?
+  portfolioStatus             String?
+  refinancingTimeline         String?
+  geographicDistribution      String?
+  decisionAuthority           String?
+  structuralPreferences       String[]
+  urgencyDrivers              String[]
+  additionalRequirements      String?
+
+  // Metadata
+  submissionCompleted Boolean  @default(false)
+  currentStep         Int      @default(1)
+  reviewStatus        String?  @default("pending")
+  referralCode        String?
+
+  // NDA
+  country                   String?
+  companyAddress            String?
+  companyRegistrationNumber String?
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
+  // Meeting transcripts
+  meetingTranscripts MeetingTranscript[] @relation("DeRiskPortfolioMeetingTranscripts")
+  docuSignEnvelopes  DocuSignEnvelope[]
+
+  @@index([email])
+  @@index([createdAt])
   @@index([reviewStatus])
 }
 
@@ -1647,7 +1837,7 @@ model CommunityPartnerLead {
   legalCompanyName      String
   tradingName           String?
   companyRegistrationNumber String?
-  countryOfIncorporation String
+  countryOfIncorporation String?
   registeredOfficeAddress String
   companyWebsite        String
   yearEstablished       String?
@@ -1707,8 +1897,13 @@ model CommunityPartnerLead {
   currentStep           Int      @default(1)
   reviewStatus          String?  @default("pending")
 
+  // NDA
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
   // Meeting transcripts
   meetingTranscripts    MeetingTranscript[] @relation("PartnerMeetingTranscripts")
+  docuSignEnvelopes     DocuSignEnvelope[]
 
   @@index([contactEmail])
   @@index([createdAt])
@@ -1725,8 +1920,8 @@ model CommunityChannelPartnerLead {
   // P1: Partner Company Information
   legalCompanyName      String
   tradingName           String?
-  companyRegistrationNumber String
-  countryOfIncorporation String
+  companyRegistrationNumber String?
+  countryOfIncorporation String?
   entityType            String   // Ltd, LLC, Pty Ltd, Corp
   registeredOfficeAddress String
   principalPlaceOfBusiness String?
@@ -1805,8 +2000,13 @@ model CommunityChannelPartnerLead {
   currentStep           Int      @default(1)
   reviewStatus          String?  @default("pending")
 
+  // NDA
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
   // Meeting transcripts
   meetingTranscripts    MeetingTranscript[] @relation("ChannelPartnerMeetingTranscripts")
+  docuSignEnvelopes     DocuSignEnvelope[]
 
   @@index([contactEmail])
   @@index([createdAt])
@@ -1892,14 +2092,157 @@ model CarbonProjectLead {
   currentStep           Int      @default(1)
   reviewStatus          String?  @default("pending")
 
+  // NDA
+  companyAddress            String?
+  companyRegistrationNumber String?
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
   // Meeting transcripts
   meetingTranscripts    MeetingTranscript[] @relation("CarbonProjectMeetingTranscripts")
+  docuSignEnvelopes     DocuSignEnvelope[]
 
   @@index([email])
   @@index([createdAt])
   @@index([projectType])
   @@index([reviewStatus])
   @@index([role])
+}
+
+// ============ CRM ASSESSMENT ONBOARDING ============
+
+model CRMAssessmentLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Key Contacts
+  fullName           String
+  email              String   @unique
+  position           String?
+  department         String?
+  workNumber         String?
+  mobileNumber       String
+  isPrimaryContact   Boolean  @default(false)
+  cfoDetails         String?
+
+  // Business Background
+  legalEntityName        String?
+  registrationNumber     String?
+  website                String?
+  linkedIn               String?
+  streetAddress1         String?
+  streetAddress2         String?
+  city                   String?
+  stateProvince          String?
+  postCode               String?
+  country                String?
+  balanceSheetCurrency   String?
+  industry               String?
+  valuationObjectives    String?
+  futureBusinessObjectives String?
+
+  // Legal Entity & CRM Data
+  separateEntities           String?
+  entityRelationships        String?
+  separateEntitiesDetails    String?
+  crmOwnership               String?
+  ownershipCompanyDetails    String?
+  ownershipValidator         String?
+  representedInIntangibles   String?
+  intangiblesDetails         String?
+  purchasedCrmPast5Years     String?
+  purchaseDetails            String?
+
+  // Customer Value Metrics
+  hasCalculatedCLV       String?
+  clvDetails             String?
+  comparedToSimilarCRM   String?
+  comparisonValue        String?
+  costToRecreateCRM      String?
+  recreationCostDetails  String?
+  dataQualityPercent     String?
+  duplicatesPercent      String?
+  syntheticPercent       String?
+  aberrationsPercent     String?
+  reusedPercent          String?
+  reusedInOtherEntities  String?
+
+  // Economic Impact
+  expectedCustomerLifetime   String?
+  estimatedRevenue           String?
+  collectionCost             String?
+  storageCost                String?
+  analysingCost              String?
+  futureScenarios            String?
+  scenarioValues             String?
+  strategicOptions           String?
+  competitorStrategicOptions String?
+  usesMobileApps             String?
+  pricingVsCompetitor        String?
+
+  // Risk & Security
+  dataSecurityBreaches       String?
+  securityBreachRemedies     String?
+  dataLoss                   String?
+  dataLossRemedies           String?
+  privacyBreaches            String?
+  privacyBreachRemedies      String?
+  thirdPartyCrmUsage         String?
+  thirdPartyCrmDetails       String?
+
+  // Investment
+  intendToMerge              String?
+  mergeDetails               String?
+  intendToInvest             String?
+  investDetails              String?
+
+  // Data Risk Exposure
+  securityMeasures           String?
+
+  // 3rd Parties
+  thirdPartyOperationsCount  String?
+  existingArrangementsImpact String?
+  thirdPartyDataAccessCount  String?
+  newCustomersPerMonth       String?
+  newCustomersPerYear        String?
+
+  // Data Roadmaps & Governance
+  auditsCRM                  String?
+  auditDetails               String?
+  hasDataGovernance          String?
+  governanceDetails          String?
+
+  // Analysing CRM Data
+  analysesCRM                String?
+  analysisDetails            String?
+  analysisSoftware           String?
+  analysisReason             String?
+  analysisEconomicBenefit    String?
+
+  // Data Silo or Cloud
+  dataStorage                String?
+  dataStorageDetails         String?
+
+  // Feedback & Consent
+  feedback                   String?
+  consentToStore             Boolean  @default(false)
+
+  // NDA
+  ndaStatus                 DocuSignEnvelopeStatus?
+  ndaSignedAt               DateTime?
+
+  // Metadata
+  submissionCompleted Boolean  @default(false)
+  currentStep         Int      @default(1)
+  reviewStatus        String?  @default("pending")
+  referralCode        String?
+
+  docuSignEnvelopes   DocuSignEnvelope[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([reviewStatus])
 }
 
 // DocuSign Envelope Tracking
@@ -1932,8 +2275,153 @@ model DocuSignEnvelope {
   companyLeadId       String?
   companyLead         CommunityCompanyLead? @relation(fields: [companyLeadId], references: [id], onDelete: Cascade)
 
+  investorLeadId        String?
+  investorLead          CommunityInvestorLead? @relation(fields: [investorLeadId], references: [id], onDelete: Cascade)
+
+  channelPartnerLeadId  String?
+  channelPartnerLead    CommunityChannelPartnerLead? @relation(fields: [channelPartnerLeadId], references: [id], onDelete: Cascade)
+
+  carbonProjectLeadId   String?
+  carbonProjectLead     CarbonProjectLead? @relation(fields: [carbonProjectLeadId], references: [id], onDelete: Cascade)
+
+  deRiskPortfolioLeadId String?
+  deRiskPortfolioLead   DeRiskPortfolioLead? @relation(fields: [deRiskPortfolioLeadId], references: [id], onDelete: Cascade)
+
+  partnerLeadId         String?
+  partnerLead           CommunityPartnerLead? @relation(fields: [partnerLeadId], references: [id], onDelete: Cascade)
+
+  projectLeadId         String?
+  projectLead           CommunityProjectLead? @relation(fields: [projectLeadId], references: [id], onDelete: Cascade)
+
+  sovereignEntityLeadId String?
+  sovereignEntityLead   SovereignEntityLead? @relation(fields: [sovereignEntityLeadId], references: [id], onDelete: Cascade)
+
+  crmAssessmentLeadId   String?
+  crmAssessmentLead     CRMAssessmentLead? @relation(fields: [crmAssessmentLeadId], references: [id], onDelete: Cascade)
+
   @@index([communityLeadId])
   @@index([companyLeadId])
+  @@index([investorLeadId])
+  @@index([channelPartnerLeadId])
+  @@index([carbonProjectLeadId])
+  @@index([deRiskPortfolioLeadId])
+  @@index([partnerLeadId])
+  @@index([projectLeadId])
+  @@index([sovereignEntityLeadId])
+  @@index([crmAssessmentLeadId])
   @@index([envelopeId])
   @@index([status])
+}
+
+// ============ INVESTOR ONBOARDING (Quick Capture) ============
+
+model InvestorOnboardingLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Contact
+  fullName     String
+  email        String   @unique
+  phoneNumber  String
+
+  // Type
+  investorCategory String // "individual" or "company"
+
+  // Company fields (only if company)
+  companyName    String?
+  companyAddress String?
+
+  // Individual fields (only if individual)
+  address String?
+
+  // Metadata
+  opportunityLinkSent Boolean @default(false)
+  emailSent           Boolean @default(false)
+  reviewStatus        String? @default("pending")
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([investorCategory])
+}
+
+// ─── WhatsApp Integration ────────────────────────────────────
+
+model WhatsAppSession {
+  id            String    @id @default(cuid())
+  name          String
+  phoneNumber   String?
+  status        String    @default("DISCONNECTED") // DISCONNECTED | QR_PENDING | CONNECTED | FAILED
+  authState     Json?
+  lastConnected DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  groups WhatsAppGroup[]
+}
+
+model WhatsAppGroup {
+  id               String    @id @default(cuid())
+  sessionId        String
+  session          WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  whatsappGroupId  String
+  name             String
+  description      String?
+  participantCount Int       @default(0)
+  importStatus     String    @default("PENDING") // PENDING | IMPORTING | COMPLETED | FAILED
+  importedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  contacts WhatsAppContact[]
+  messages WhatsAppMessage[]
+
+  @@unique([sessionId, whatsappGroupId])
+  @@index([sessionId])
+}
+
+model WhatsAppContact {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       WhatsAppGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  phoneNumber String
+  pushName    String?
+  isAdmin     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  messages WhatsAppMessage[]
+
+  @@unique([groupId, phoneNumber])
+  @@index([groupId])
+}
+
+model WhatsAppMessage {
+  id            String    @id @default(cuid())
+  groupId       String
+  group         WhatsAppGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contactId     String?
+  contact       WhatsAppContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  whatsappMsgId String
+  messageType   String    // text | image | video | document | audio | sticker
+  content       String?
+  timestamp     DateTime
+  createdAt     DateTime  @default(now())
+
+  media WhatsAppMedia?
+
+  @@index([groupId, timestamp])
+  @@index([contactId])
+}
+
+model WhatsAppMedia {
+  id        String   @id @default(cuid())
+  messageId String   @unique
+  message   WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mediaType String   // image | video | document | audio
+  mimeType  String?
+  fileName  String?
+  fileSize  Int?
+  s3Key     String?
+  s3Url     String?
+  createdAt DateTime @default(now())
 }

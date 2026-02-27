@@ -14,6 +14,7 @@ import fastifySSE from '@fastify/sse';
 import { db } from './db';
 import { fetchTranscriptFromFireflies } from './fireflies';
 import { MeetingProcessingStatus } from '@prisma/client';
+import { whatsappService } from './whatsapp';
 
 const email = {
   type: 'object',
@@ -230,10 +231,10 @@ async function handleAdvisorAgreementSigned(
   await postmarkClient.sendEmail({
     From: 'jps@12butterflies.life',
     To: envelope.recipientEmail,
-    Subject: 'Advisor Agreement Signed - Welcome to One 2B!',
+    Subject: 'Advisor Agreement Signed - Welcome to One2b!',
     HtmlBody: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #1E4364;">Welcome to One 2B, ${firstName}!</h1>
+        <h1 style="color: #1E4364;">Welcome to One2b, ${firstName}!</h1>
         <p>Thank you for signing the Advisor Collaboration Agreement. We're excited to have you as part of our advisor network.</p>
         <p>As an advisor, you'll gain access to:</p>
         <ul>
@@ -242,10 +243,10 @@ async function handleAdvisorAgreementSigned(
           <li>Collaborative opportunities across our community</li>
         </ul>
         <p>Our team will be in touch soon with next steps and onboarding information.</p>
-        <p>Best regards,<br>The One 2B Team</p>
+        <p>Best regards,<br>The One2b Team</p>
       </div>
     `,
-    TextBody: `Welcome to One 2B, ${firstName}!\n\nThank you for signing the Advisor Collaboration Agreement. We're excited to have you as part of our advisor network.\n\nOur team will be in touch soon with next steps and onboarding information.\n\nBest regards,\nThe One 2B Team`,
+    TextBody: `Welcome to One2b, ${firstName}!\n\nThank you for signing the Advisor Collaboration Agreement. We're excited to have you as part of our advisor network.\n\nOur team will be in touch soon with next steps and onboarding information.\n\nBest regards,\nThe One2b Team`,
     MessageStream: 'outbound',
   });
 
@@ -294,7 +295,7 @@ async function handleCommunityNdaSigned(
   await postmarkClient.sendEmail({
     From: 'jps@12butterflies.life',
     To: envelope.recipientEmail,
-    Subject: 'NDA Signed - Your One 2B Community Access',
+    Subject: 'NDA Signed - Your One2b Community Access',
     HtmlBody: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #1E4364;">Welcome to the Community, ${firstName}!</h1>
@@ -311,10 +312,10 @@ async function handleCommunityNdaSigned(
           <li>Share valuable insights and support fellow members</li>
         </ul>
         <p>We're excited to have you as part of our community!</p>
-        <p>Best regards,<br>The One 2B Team</p>
+        <p>Best regards,<br>The One2b Team</p>
       </div>
     `,
-    TextBody: `Welcome to the Community, ${firstName}!\n\nThank you for signing the NDA. You now have access to our exclusive community WhatsApp group.\n\nJoin here: ${whatsappLink}\n\nWe're excited to have you as part of our community!\n\nBest regards,\nThe One 2B Team`,
+    TextBody: `Welcome to the Community, ${firstName}!\n\nThank you for signing the NDA. You now have access to our exclusive community WhatsApp group.\n\nJoin here: ${whatsappLink}\n\nWe're excited to have you as part of our community!\n\nBest regards,\nThe One2b Team`,
     MessageStream: 'outbound',
   });
 
@@ -348,7 +349,7 @@ async function handleCompanyNdaSigned(
   await postmarkClient.sendEmail({
     From: 'jps@12butterflies.life',
     To: envelope.recipientEmail,
-    Subject: 'NDA Signed - Next Steps for Your One 2B Partnership',
+    Subject: 'NDA Signed - Next Steps for Your One2b Partnership',
     HtmlBody: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #1E4364;">Thank You, ${firstName}!</h1>
@@ -360,10 +361,10 @@ async function handleCompanyNdaSigned(
           <li>You'll receive tailored recommendations based on your business needs</li>
         </ul>
         <p>In the meantime, feel free to reach out if you have any questions.</p>
-        <p>Best regards,<br>The One 2B Partnerships Team</p>
+        <p>Best regards,<br>The One2b Partnerships Team</p>
       </div>
     `,
-    TextBody: `Thank You, ${firstName}!\n\nWe've received your signed NDA. Thank you for taking this step toward our partnership.\n\nWhat's Next:\n- Our team will review your company profile\n- We'll schedule an introductory call within 24-48 hours\n- You'll receive tailored recommendations based on your business needs\n\nIn the meantime, feel free to reach out if you have any questions.\n\nBest regards,\nThe One 2B Partnerships Team`,
+    TextBody: `Thank You, ${firstName}!\n\nWe've received your signed NDA. Thank you for taking this step toward our partnership.\n\nWhat's Next:\n- Our team will review your company profile\n- We'll schedule an introductory call within 24-48 hours\n- You'll receive tailored recommendations based on your business needs\n\nIn the meantime, feel free to reach out if you have any questions.\n\nBest regards,\nThe One2b Partnerships Team`,
     MessageStream: 'outbound',
   });
 
@@ -862,7 +863,7 @@ const run = async () => {
             <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
               <h1 style="color: #28a745;">✅ Consent Granted Successfully!</h1>
               <p>DocuSign JWT authentication is now authorized.</p>
-              <p>Your One 2B application can now send documents for e-signature on behalf of the configured user.</p>
+              <p>Your One2b application can now send documents for e-signature on behalf of the configured user.</p>
               <h3>What's Next?</h3>
               <ul>
                 <li>The DocuSign integration is now ready to use</li>
@@ -1011,6 +1012,151 @@ const run = async () => {
       } catch (e) {
         console.error('Error handling DocuSign webhook:', e);
         reply.send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // ─── WhatsApp Integration Routes ─────────────────────────────
+
+  // Connect a WhatsApp session (create socket, begin QR flow)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/whatsapp/connect',
+    async (
+      req: FastifyRequest<{ Body: { sessionId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { sessionId } = req.body;
+        if (!sessionId) {
+          reply.status(400).send({ ok: false, error: 'sessionId is required' });
+          return;
+        }
+
+        await whatsappService.connect(sessionId);
+        reply.send({ ok: true, message: 'Connection initiated' });
+      } catch (e) {
+        console.error('Error connecting WhatsApp:', e);
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // Get QR code for session (polling endpoint)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).get(
+    '/whatsapp/qr/:sessionId',
+    async (
+      req: FastifyRequest<{ Params: { sessionId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { sessionId } = req.params;
+        const qr = whatsappService.getQRCode(sessionId);
+        const status = whatsappService.getSessionStatus(sessionId);
+
+        reply.send({ ok: true, qr, status });
+      } catch (e) {
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // Disconnect session
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/whatsapp/disconnect',
+    async (
+      req: FastifyRequest<{ Body: { sessionId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { sessionId } = req.body;
+        await whatsappService.disconnect(sessionId);
+        reply.send({ ok: true, message: 'Disconnected' });
+      } catch (e) {
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // Fetch groups for session
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).get(
+    '/whatsapp/groups/:sessionId',
+    async (
+      req: FastifyRequest<{ Params: { sessionId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { sessionId } = req.params;
+        const groups = await whatsappService.fetchGroups(sessionId);
+        reply.send({ ok: true, groups });
+      } catch (e) {
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // Start importing a group
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/whatsapp/import',
+    async (
+      req: FastifyRequest<{
+        Body: {
+          sessionId: string;
+          groupDbId: string;
+          whatsappGroupId: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { sessionId, groupDbId, whatsappGroupId } = req.body;
+
+        // Start import in background (don't block response)
+        void whatsappService.importGroup(sessionId, groupDbId, whatsappGroupId);
+
+        reply.send({ ok: true, message: 'Import started' });
+      } catch (e) {
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  // Get import progress
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).get(
+    '/whatsapp/import-status/:groupDbId',
+    async (
+      req: FastifyRequest<{ Params: { groupDbId: string } }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { groupDbId } = req.params;
+        const progress = whatsappService.getImportProgress(groupDbId);
+        reply.send({ ok: true, progress });
+      } catch (e) {
+        reply.status(500).send({
           ok: false,
           error: e instanceof Error ? e.message : 'Unknown error',
         });
