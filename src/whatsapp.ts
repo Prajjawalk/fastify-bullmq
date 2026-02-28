@@ -40,6 +40,7 @@ export class WhatsAppService {
   private sockets: Map<string, WASocket> = new Map();
   private qrCodes: Map<string, string> = new Map(); // sessionId → base64 QR
   private importProgress: Map<string, ImportProgress> = new Map();
+  private syncTimers: Map<string, NodeJS.Timeout> = new Map(); // sessionId → periodic sync timer
   private authBasePath: string;
 
   constructor() {
@@ -144,6 +145,12 @@ export class WhatsAppService {
             lastConnected: new Date(),
           },
         });
+
+        // Set up persistent message listener for real-time sync
+        void this.setupPersistentListener(sessionId, sock);
+
+        // Set up periodic sync (every 10 minutes)
+        this.startPeriodicSync(sessionId);
       }
     });
   }
@@ -153,6 +160,13 @@ export class WhatsAppService {
   }
 
   async disconnect(sessionId: string): Promise<void> {
+    // Stop periodic sync
+    const timer = this.syncTimers.get(sessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.syncTimers.delete(sessionId);
+    }
+
     const sock = this.sockets.get(sessionId);
     if (sock) {
       await sock.logout();
@@ -505,6 +519,338 @@ export class WhatsAppService {
     if (sock.user) return 'CONNECTED';
     if (this.qrCodes.has(sessionId)) return 'QR_PENDING';
     return 'DISCONNECTED';
+  }
+
+  // ─── Persistent Listener (Real-time Sync) ──────────────
+
+  private async setupPersistentListener(
+    sessionId: string,
+    sock: WASocket
+  ): Promise<void> {
+    // Get all imported groups for this session
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const importedGroups = await (db as any).whatsAppGroup.findMany({
+      where: {
+        sessionId,
+        importStatus: 'COMPLETED',
+      },
+      select: {
+        id: true,
+        whatsappGroupId: true,
+      },
+    });
+
+    if (importedGroups.length === 0) {
+      console.log(
+        `No imported groups for session ${sessionId}, skipping persistent listener`
+      );
+      return;
+    }
+
+    // Build a lookup map: whatsappGroupId → groupDbId
+    const groupMap = new Map<string, string>();
+    for (const g of importedGroups) {
+      groupMap.set(g.whatsappGroupId, g.id);
+    }
+
+    console.log(
+      `🔄 Setting up persistent listener for ${groupMap.size} groups on session ${sessionId}`
+    );
+
+    sock.ev.on('messages.upsert', async ({ messages }: { messages: WAMessage[]; type: MessageUpsertType }) => {
+      for (const msg of messages) {
+        const remoteJid = msg.key.remoteJid;
+        if (!remoteJid) continue;
+
+        const groupDbId = groupMap.get(remoteJid);
+        if (!groupDbId) continue; // Not an imported group
+        if (!msg.message) continue;
+
+        // Deduplicate: check if message already stored
+        const whatsappMsgId = msg.key.id ?? '';
+        if (!whatsappMsgId) continue;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = await (db as any).whatsAppMessage.findFirst({
+          where: { groupId: groupDbId, whatsappMsgId },
+        });
+        if (existing) continue;
+
+        try {
+          await this.storeMessage(msg, groupDbId);
+        } catch (err) {
+          console.error('Error storing synced message:', err);
+        }
+      }
+    });
+  }
+
+  // ─── Store a single message (shared by import & sync) ──
+
+  private async storeMessage(
+    msg: WAMessage,
+    groupDbId: string
+  ): Promise<void> {
+    const contentType = getContentType(msg.message!);
+    if (!contentType) return;
+
+    let messageType = 'text';
+    let content: string | null = null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msgAny = msg.message as any;
+
+    switch (contentType) {
+      case 'conversation':
+        messageType = 'text';
+        content = (msgAny.conversation as string) ?? null;
+        break;
+      case 'extendedTextMessage':
+        messageType = 'text';
+        content = (msgAny.extendedTextMessage?.text as string) ?? null;
+        break;
+      case 'imageMessage':
+        messageType = 'image';
+        content = (msgAny.imageMessage?.caption as string) ?? null;
+        break;
+      case 'videoMessage':
+        messageType = 'video';
+        content = (msgAny.videoMessage?.caption as string) ?? null;
+        break;
+      case 'documentMessage':
+        messageType = 'document';
+        content = (msgAny.documentMessage?.fileName as string) ?? null;
+        break;
+      case 'audioMessage':
+        messageType = 'audio';
+        break;
+      case 'stickerMessage':
+        messageType = 'sticker';
+        break;
+      default:
+        messageType = contentType;
+    }
+
+    // Find or create contact
+    const senderJid = msg.key.participant ?? msg.key.remoteJid ?? '';
+    const senderPhone = senderJid.split('@')[0] ?? senderJid;
+    let contactId: string | null = null;
+
+    if (senderPhone) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const contact = await (db as any).whatsAppContact.upsert({
+        where: {
+          groupId_phoneNumber: {
+            groupId: groupDbId,
+            phoneNumber: senderPhone,
+          },
+        },
+        create: {
+          groupId: groupDbId,
+          phoneNumber: senderPhone,
+          pushName: msg.pushName ?? undefined,
+        },
+        update: {
+          ...(msg.pushName ? { pushName: msg.pushName } : {}),
+        },
+      });
+      contactId = contact.id;
+    }
+
+    const timestamp = msg.messageTimestamp
+      ? new Date(Number(msg.messageTimestamp) * 1000)
+      : new Date();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const savedMsg = await (db as any).whatsAppMessage.create({
+      data: {
+        groupId: groupDbId,
+        contactId,
+        whatsappMsgId: msg.key.id ?? `unknown-${Date.now()}`,
+        messageType,
+        content,
+        timestamp,
+      },
+    });
+
+    // Handle media metadata
+    if (
+      ['image', 'video', 'document', 'audio'].includes(messageType) &&
+      msg.message
+    ) {
+      try {
+        const mediaMsg = msgAny[contentType];
+        const mimeType = (mediaMsg?.mimetype as string) ?? null;
+        const fileName = (mediaMsg?.fileName as string) ?? null;
+        const fileSize = (mediaMsg?.fileLength as number) ?? null;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (db as any).whatsAppMedia.create({
+          data: {
+            messageId: savedMsg.id,
+            mediaType: messageType,
+            mimeType,
+            fileName,
+            fileSize,
+          },
+        });
+      } catch (mediaErr) {
+        console.error('Error saving media metadata:', mediaErr);
+      }
+    }
+  }
+
+  // ─── Manual Sync ───────────────────────────────────────
+
+  async syncGroup(
+    sessionId: string,
+    groupDbId: string,
+    whatsappGroupId: string
+  ): Promise<{ messagessynced: number; contactsUpdated: number }> {
+    const sock = this.sockets.get(sessionId);
+    if (!sock) {
+      throw new Error(`Session ${sessionId} not connected`);
+    }
+
+    console.log(`🔄 Manual sync started for group ${groupDbId}`);
+
+    // 1. Sync contacts from group metadata
+    const metadata = await sock.groupMetadata(whatsappGroupId);
+    let contactsUpdated = 0;
+
+    for (const participant of metadata.participants) {
+      const phoneNumber = participant.id.split('@')[0] ?? participant.id;
+      const isAdmin =
+        participant.admin === 'admin' || participant.admin === 'superadmin';
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).whatsAppContact.upsert({
+        where: {
+          groupId_phoneNumber: {
+            groupId: groupDbId,
+            phoneNumber,
+          },
+        },
+        create: {
+          groupId: groupDbId,
+          phoneNumber,
+          isAdmin,
+        },
+        update: {
+          isAdmin,
+        },
+      });
+      contactsUpdated++;
+    }
+
+    // 2. Fetch recent message history
+    let messagessynced = 0;
+
+    const syncHandler = async ({
+      messages,
+    }: {
+      messages: WAMessage[];
+      type: MessageUpsertType;
+    }) => {
+      for (const msg of messages) {
+        if (msg.key.remoteJid !== whatsappGroupId) continue;
+        if (!msg.message) continue;
+
+        const whatsappMsgId = msg.key.id ?? '';
+        if (!whatsappMsgId) continue;
+
+        // Deduplicate
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = await (db as any).whatsAppMessage.findFirst({
+          where: { groupId: groupDbId, whatsappMsgId },
+        });
+        if (existing) continue;
+
+        try {
+          await this.storeMessage(msg, groupDbId);
+          messagessynced++;
+        } catch (err) {
+          console.error('Error storing synced message:', err);
+        }
+      }
+    };
+
+    sock.ev.on('messages.upsert', syncHandler);
+
+    try {
+      await sock.fetchMessageHistory(
+        50,
+        { remoteJid: whatsappGroupId, fromMe: false, id: '' },
+        Math.floor(Date.now() / 1000)
+      );
+    } catch (historyErr) {
+      console.log('fetchMessageHistory not available:', historyErr);
+    }
+
+    // Wait for messages to arrive
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    sock.ev.off('messages.upsert', syncHandler);
+
+    // Update lastSyncedAt
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db as any).whatsAppGroup.update({
+      where: { id: groupDbId },
+      data: { lastSyncedAt: new Date() },
+    });
+
+    console.log(
+      `Sync completed for group ${groupDbId}: ${contactsUpdated} contacts, ${messagessynced} new messages`
+    );
+
+    return { messagessynced, contactsUpdated };
+  }
+
+  // ─── Periodic Sync ─────────────────────────────────────
+
+  private startPeriodicSync(sessionId: string): void {
+    // Clear existing timer if any
+    const existing = this.syncTimers.get(sessionId);
+    if (existing) clearInterval(existing);
+
+    // Sync every 10 minutes
+    const timer = setInterval(() => {
+      void this.syncAllImportedGroups(sessionId);
+    }, 10 * 60 * 1000);
+
+    this.syncTimers.set(sessionId, timer);
+    console.log(`⏰ Periodic sync enabled for session ${sessionId} (every 10 min)`);
+  }
+
+  private async syncAllImportedGroups(sessionId: string): Promise<void> {
+    const sock = this.sockets.get(sessionId);
+    if (!sock?.user) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const importedGroups = await (db as any).whatsAppGroup.findMany({
+      where: {
+        sessionId,
+        importStatus: 'COMPLETED',
+      },
+      select: {
+        id: true,
+        whatsappGroupId: true,
+      },
+    });
+
+    if (importedGroups.length === 0) return;
+
+    console.log(
+      `⏰ Periodic sync: syncing ${importedGroups.length} groups for session ${sessionId}`
+    );
+
+    for (const group of importedGroups) {
+      try {
+        await this.syncGroup(sessionId, group.id, group.whatsappGroupId);
+      } catch (err) {
+        console.error(`Error syncing group ${group.id}:`, err);
+      }
+    }
   }
 }
 

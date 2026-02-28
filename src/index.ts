@@ -1164,6 +1164,37 @@ const run = async () => {
     }
   );
 
+  // Sync a group's messages manually
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/whatsapp/sync',
+    async (
+      req: FastifyRequest<{
+        Body: {
+          sessionId: string;
+          groupDbId: string;
+          whatsappGroupId: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const { sessionId, groupDbId, whatsappGroupId } = req.body;
+        const result = await whatsappService.syncGroup(
+          sessionId,
+          groupDbId,
+          whatsappGroupId
+        );
+        reply.send({ ok: true, ...result });
+      } catch (e) {
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
   await server.listen({ port: env.PORT, host: '0.0.0.0' });
   console.log(
     `To populate the queue and demo the UI, run: curl https://${env.RAILWAY_STATIC_URL}/add-job?id=1&email=hello%40world.com`
