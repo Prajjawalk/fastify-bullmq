@@ -737,6 +737,7 @@ enum WorkflowModuleStatus {
   NOT_STARTED
   PAUSED
   DISABLED
+  SIGNED
 }
 
 model WorkflowUpdate {
@@ -1044,7 +1045,7 @@ model CommunityLead {
   bio                  String?
 
   // Vertical Onboarding - Step 2: Purpose
-  reasonsForJoining    String[]  @default([]) // What brings you to One 2b
+  reasonsForJoining    String[]  @default([]) // What brings you to One2b
   motivations          String[]  @default([]) // Top 3 motivations (max 3)
   problemsToSolve      String?
 
@@ -1315,20 +1316,63 @@ model CommunityCompanyLead {
   @@index([seekingInsurance])
 }
 
+// Unified referral identity per email — one person = one referral code across all user types
+model ReferralProfile {
+  id                    String   @id @default(cuid())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  email                 String   @unique
+  fullName              String
+  personalReferralCode  String?  @unique // Format: XXX-XXXXXX (name initials + random)
+
+  // Referrals made by this profile
+  referralsMade         Referral[] @relation("ReferralProfileMade")
+
+  // Badge earning
+  earnedBadges          ReferralProfileBadge[]
+
+  @@index([email])
+  @@index([personalReferralCode])
+}
+
+// Junction table: ReferralProfile ↔ ReferralBadge
+model ReferralProfileBadge {
+  id                String          @id @default(cuid())
+  createdAt         DateTime        @default(now())
+
+  referralProfileId String
+  referralProfile   ReferralProfile @relation(fields: [referralProfileId], references: [id], onDelete: Cascade)
+
+  badgeId           String
+  badge             ReferralBadge   @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  earnedAt          DateTime        @default(now())
+
+  @@unique([referralProfileId, badgeId])
+  @@index([referralProfileId])
+  @@index([badgeId])
+}
+
 model Referral {
   id                String   @id @default(cuid())
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  // Referral code - now links to personalReferralCode (not unique, same code for multiple referrals)
+  // Referral code - links to personalReferralCode (not unique, same code for multiple referrals)
   code              String   // The referrer's personal code used for this referral
 
-  // Who is referring (the community member)
-  referrerId        String
-  referrer          CommunityLead @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+  // Who is referring (unified referral profile)
+  referrerProfileId String
+  referrerProfile   ReferralProfile @relation("ReferralProfileMade", fields: [referrerProfileId], references: [id], onDelete: Cascade)
+
+  // DEPRECATED: Legacy referrer link to CommunityLead (kept for migration audit trail)
+  legacyReferrerId  String?
+  referrerId        String?
+  referrer          CommunityLead? @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: SetNull)
 
   // What is being referred
-  referralType      ReferralType // COMMUNITY_MEMBER, COMPANY, PROJECT
+  referralType      ReferralType
 
   // Who/what was referred (nullable - filled when the referred entity is created)
   referredCommunityLeadId  String?
@@ -1339,6 +1383,30 @@ model Referral {
 
   referredProjectLeadId    String?
   referredProjectLead      CommunityProjectLead? @relation("ReferredProject", fields: [referredProjectLeadId], references: [id], onDelete: SetNull)
+
+  referredInvestorLeadId   String?
+  referredInvestorLead     CommunityInvestorLead? @relation("ReferredInvestor", fields: [referredInvestorLeadId], references: [id], onDelete: SetNull)
+
+  referredPartnerLeadId    String?
+  referredPartnerLead      CommunityPartnerLead? @relation("ReferredPartner", fields: [referredPartnerLeadId], references: [id], onDelete: SetNull)
+
+  referredChannelPartnerLeadId String?
+  referredChannelPartnerLead   CommunityChannelPartnerLead? @relation("ReferredChannelPartner", fields: [referredChannelPartnerLeadId], references: [id], onDelete: SetNull)
+
+  referredCarbonProjectLeadId  String?
+  referredCarbonProjectLead    CarbonProjectLead? @relation("ReferredCarbonProject", fields: [referredCarbonProjectLeadId], references: [id], onDelete: SetNull)
+
+  referredSovereignEntityLeadId String?
+  referredSovereignEntityLead   SovereignEntityLead? @relation("ReferredSovereignEntity", fields: [referredSovereignEntityLeadId], references: [id], onDelete: SetNull)
+
+  referredDeRiskPortfolioLeadId String?
+  referredDeRiskPortfolioLead   DeRiskPortfolioLead? @relation("ReferredDeRiskPortfolio", fields: [referredDeRiskPortfolioLeadId], references: [id], onDelete: SetNull)
+
+  referredInvestorOnboardingLeadId String?
+  referredInvestorOnboardingLead   InvestorOnboardingLead? @relation("ReferredInvestorOnboarding", fields: [referredInvestorOnboardingLeadId], references: [id], onDelete: SetNull)
+
+  referredPDVLeadId    String?
+  referredPDVLead      PDVLead? @relation("ReferredPDV", fields: [referredPDVLeadId], references: [id], onDelete: SetNull)
 
   // Tier of connection (1 = closest, 3 = farthest)
   connectionTier    Int      @default(3) // 1, 2, or 3
@@ -1354,6 +1422,7 @@ model Referral {
   // When the referral was accepted (user signed up with this code)
   acceptedAt        DateTime?
 
+  @@index([referrerProfileId])
   @@index([referrerId])
   @@index([referralType])
   @@index([status])
@@ -1361,6 +1430,14 @@ model Referral {
   @@index([referredCommunityLeadId])
   @@index([referredCompanyLeadId])
   @@index([referredProjectLeadId])
+  @@index([referredInvestorLeadId])
+  @@index([referredPartnerLeadId])
+  @@index([referredChannelPartnerLeadId])
+  @@index([referredCarbonProjectLeadId])
+  @@index([referredSovereignEntityLeadId])
+  @@index([referredDeRiskPortfolioLeadId])
+  @@index([referredInvestorOnboardingLeadId])
+  @@index([referredPDVLeadId])
 }
 
 enum ReferralType {
@@ -1371,6 +1448,10 @@ enum ReferralType {
   PARTNER
   CHANNEL_PARTNER
   CARBON_PROJECT
+  SOVEREIGN_ENTITY
+  DERISK_PORTFOLIO
+  INVESTOR_ONBOARDING
+  PDV
 }
 
 enum ReferralStatus {
@@ -1393,8 +1474,11 @@ model ReferralBadge {
   color         String?  // Badge color code (e.g., "#CD7F32" for bronze)
   description   String?  // Description of the badge
 
-  // Earned by
-  earnedBy      CommunityLeadBadge[]
+  // Earned by (new: ReferralProfile-based)
+  earnedByProfiles  ReferralProfileBadge[]
+
+  // DEPRECATED: Legacy community lead badges (kept for migration)
+  earnedBy          CommunityLeadBadge[]
 
   @@unique([tier])
 }
@@ -1491,6 +1575,9 @@ model MeetingTranscript {
   deRiskPortfolioLeadId String?
   deRiskPortfolioLead   DeRiskPortfolioLead? @relation("DeRiskPortfolioMeetingTranscripts", fields: [deRiskPortfolioLeadId], references: [id], onDelete: SetNull)
 
+  pdvLeadId             String?
+  pdvLead               PDVLead? @relation("PDVMeetingTranscripts", fields: [pdvLeadId], references: [id], onDelete: SetNull)
+
   // Processing status
   processingStatus  MeetingProcessingStatus @default(RECEIVED)
   processedAt       DateTime?
@@ -1512,6 +1599,7 @@ model MeetingTranscript {
   @@index([carbonProjectLeadId])
   @@index([sovereignEntityLeadId])
   @@index([deRiskPortfolioLeadId])
+  @@index([pdvLeadId])
   @@index([processingStatus])
   @@index([createdAt])
   @@index([importedViaKeyId])
@@ -1704,6 +1792,9 @@ model CommunityInvestorLead {
   meetingTranscripts    MeetingTranscript[] @relation("InvestorMeetingTranscripts")
   docuSignEnvelopes     DocuSignEnvelope[]
 
+  // Referrals received
+  referralsReceived     Referral[] @relation("ReferredInvestor")
+
   @@index([email])
   @@index([createdAt])
   @@index([investorType])
@@ -1761,6 +1852,9 @@ model SovereignEntityLead {
   // Meeting transcripts
   meetingTranscripts MeetingTranscript[] @relation("SovereignEntityMeetingTranscripts")
   docuSignEnvelopes  DocuSignEnvelope[]
+
+  // Referrals received
+  referralsReceived  Referral[] @relation("ReferredSovereignEntity")
 
   @@index([email])
   @@index([createdAt])
@@ -1820,6 +1914,9 @@ model DeRiskPortfolioLead {
   // Meeting transcripts
   meetingTranscripts MeetingTranscript[] @relation("DeRiskPortfolioMeetingTranscripts")
   docuSignEnvelopes  DocuSignEnvelope[]
+
+  // Referrals received
+  referralsReceived  Referral[] @relation("ReferredDeRiskPortfolio")
 
   @@index([email])
   @@index([createdAt])
@@ -1904,6 +2001,9 @@ model CommunityPartnerLead {
   // Meeting transcripts
   meetingTranscripts    MeetingTranscript[] @relation("PartnerMeetingTranscripts")
   docuSignEnvelopes     DocuSignEnvelope[]
+
+  // Referrals received
+  referralsReceived     Referral[] @relation("ReferredPartner")
 
   @@index([contactEmail])
   @@index([createdAt])
@@ -2008,6 +2108,9 @@ model CommunityChannelPartnerLead {
   meetingTranscripts    MeetingTranscript[] @relation("ChannelPartnerMeetingTranscripts")
   docuSignEnvelopes     DocuSignEnvelope[]
 
+  // Referrals received
+  referralsReceived     Referral[] @relation("ReferredChannelPartner")
+
   @@index([contactEmail])
   @@index([createdAt])
   @@index([reviewStatus])
@@ -2101,6 +2204,9 @@ model CarbonProjectLead {
   // Meeting transcripts
   meetingTranscripts    MeetingTranscript[] @relation("CarbonProjectMeetingTranscripts")
   docuSignEnvelopes     DocuSignEnvelope[]
+
+  // Referrals received
+  referralsReceived     Referral[] @relation("ReferredCarbonProject")
 
   @@index([email])
   @@index([createdAt])
@@ -2299,6 +2405,9 @@ model DocuSignEnvelope {
   crmAssessmentLeadId   String?
   crmAssessmentLead     CRMAssessmentLead? @relation(fields: [crmAssessmentLeadId], references: [id], onDelete: Cascade)
 
+  pdvLeadId             String?
+  pdvLead               PDVLead? @relation(fields: [pdvLeadId], references: [id], onDelete: Cascade)
+
   @@index([communityLeadId])
   @@index([companyLeadId])
   @@index([investorLeadId])
@@ -2309,6 +2418,7 @@ model DocuSignEnvelope {
   @@index([projectLeadId])
   @@index([sovereignEntityLeadId])
   @@index([crmAssessmentLeadId])
+  @@index([pdvLeadId])
   @@index([envelopeId])
   @@index([status])
 }
@@ -2340,6 +2450,9 @@ model InvestorOnboardingLead {
   emailSent           Boolean @default(false)
   reviewStatus        String? @default("pending")
 
+  // Referrals received
+  referralsReceived   Referral[] @relation("ReferredInvestorOnboarding")
+
   @@index([email])
   @@index([createdAt])
   @@index([investorCategory])
@@ -2370,6 +2483,7 @@ model WhatsAppGroup {
   participantCount Int       @default(0)
   importStatus     String    @default("PENDING") // PENDING | IMPORTING | COMPLETED | FAILED
   importedAt       DateTime?
+  lastSyncedAt     DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -2424,4 +2538,82 @@ model WhatsAppMedia {
   s3Key     String?
   s3Url     String?
   createdAt DateTime @default(now())
+}
+
+// Monday.com CRM Sync Tracking
+model MondaySyncRecord {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  entityType    String   // "community", "advisor", "investor", "partner", "channelPartner", "company", "project", "carbonProject", "friendsFamily"
+  entityId      String
+  mondayBoardId String
+  mondayGroupId String
+  mondayItemId  String
+  syncStatus    String   @default("synced") // "synced" | "failed"
+  lastSyncedAt  DateTime @default(now())
+  errorMessage  String?
+
+  @@unique([entityType, entityId])
+  @@index([entityType])
+  @@index([mondayItemId])
+}
+
+// ============ PDV (Preliminary Data Valuation) ============
+
+model PDVLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Contact
+  fullName    String
+  email       String  @unique
+  mobile      String
+  companyName String
+  role        String
+  linkedIn    String?
+
+  // Communication
+  mobilePlatform        String
+  videoPlatform         String
+  preferredContactTimes String
+  timezone              String
+
+  // PDV Questionnaire
+  businessOwnership             String
+  yearIncorporated              String
+  dataCollectionYears           String
+  revenueFromDataPercent        String
+  dataReliantPercent            String
+  legalEntityCount              String
+  dataUniquenessPercent         String
+  dataScarcityPercent           String
+  revenueGeneratingUnits        String
+  currentMarketValue            String
+  yearlyValuations              String
+  valuationMethod               String
+  businessUnitValueDistribution String
+  investmentReadiness           String
+
+  // Referral
+  referralCode String?
+
+  // Metadata
+  submissionCompleted Boolean @default(false)
+  currentStep         Int     @default(1)
+  reviewStatus        String? @default("pending")
+
+  // DocuSign
+  ndaStatus   DocuSignEnvelopeStatus?
+  ndaSignedAt DateTime?
+
+  // Relations
+  referralsReceived  Referral[]          @relation("ReferredPDV")
+  meetingTranscripts MeetingTranscript[] @relation("PDVMeetingTranscripts")
+  docuSignEnvelopes  DocuSignEnvelope[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([reviewStatus])
 }

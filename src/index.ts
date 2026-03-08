@@ -324,53 +324,95 @@ async function handleCommunityNdaSigned(
   );
 }
 
-async function handleCompanyNdaSigned(
-  envelope: {
-    companyLeadId: string;
-    recipientEmail: string;
-    recipientName: string;
-  },
+// Update ndaStatus on all linked leads for any status change (DELIVERED, SIGNED, DECLINED, VOIDED)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function updateAllLeadNdaStatus(envelope: any, newStatus: string) {
+  const leadUpdateMap: Array<{
+    idField: string;
+    model: string;
+    label: string;
+  }> = [
+    { idField: 'communityLeadId', model: 'communityLead', label: 'Community' },
+    { idField: 'companyLeadId', model: 'communityCompanyLead', label: 'Company' },
+    { idField: 'investorLeadId', model: 'communityInvestorLead', label: 'Investor' },
+    { idField: 'channelPartnerLeadId', model: 'communityChannelPartnerLead', label: 'Channel Partner' },
+    { idField: 'carbonProjectLeadId', model: 'carbonProjectLead', label: 'Carbon Project' },
+    { idField: 'deRiskPortfolioLeadId', model: 'deRiskPortfolioLead', label: 'De-Risk Portfolio' },
+    { idField: 'partnerLeadId', model: 'communityPartnerLead', label: 'Partner' },
+    { idField: 'projectLeadId', model: 'communityProjectLead', label: 'Project' },
+    { idField: 'sovereignEntityLeadId', model: 'sovereignEntityLead', label: 'Sovereign Entity' },
+    { idField: 'crmAssessmentLeadId', model: 'crmAssessmentLead', label: 'CRM Assessment' },
+    { idField: 'pdvLeadId', model: 'pDVLead', label: 'PDV' },
+  ];
+
+  for (const { idField, model, label } of leadUpdateMap) {
+    if (envelope[idField]) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any)[model].update({
+        where: { id: envelope[idField] },
+        data: {
+          ndaStatus: newStatus,
+          ...(newStatus === 'SIGNED' && { ndaSignedAt: new Date() }),
+        },
+      });
+      console.log(
+        `📋 Updated ${label} lead ${envelope[idField]} ndaStatus to: ${newStatus}`
+      );
+    }
+  }
+}
+
+// Send NDA signed confirmation email for lead types not handled by specific handlers
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleGenericNdaSigned(
+  envelope: any,
   postmarkClient: import('postmark').ServerClient
 ) {
-  // Update company lead with signed status
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (db as any).communityCompanyLead.update({
-    where: { id: envelope.companyLeadId },
-    data: {
-      ndaStatus: 'SIGNED',
-      ndaSignedAt: new Date(),
-    },
-  });
+  const genericLeadFields: Array<{ idField: string; label: string }> = [
+    { idField: 'companyLeadId', label: 'Company' },
+    { idField: 'investorLeadId', label: 'Investor' },
+    { idField: 'channelPartnerLeadId', label: 'Channel Partner' },
+    { idField: 'carbonProjectLeadId', label: 'Carbon Project' },
+    { idField: 'deRiskPortfolioLeadId', label: 'De-Risk Portfolio' },
+    { idField: 'partnerLeadId', label: 'Partner' },
+    { idField: 'projectLeadId', label: 'Project' },
+    { idField: 'sovereignEntityLeadId', label: 'Sovereign Entity' },
+    { idField: 'crmAssessmentLeadId', label: 'CRM Assessment' },
+    { idField: 'pdvLeadId', label: 'PDV' },
+  ];
 
-  // Send next steps email
-  const firstName =
-    envelope.recipientName.split(' ')[0] ?? envelope.recipientName;
+  for (const { idField, label } of genericLeadFields) {
+    if (envelope[idField]) {
+      const firstName =
+        envelope.recipientName.split(' ')[0] ?? envelope.recipientName;
 
-  await postmarkClient.sendEmail({
-    From: 'jps@12butterflies.life',
-    To: envelope.recipientEmail,
-    Subject: 'NDA Signed - Next Steps for Your One2b Partnership',
-    HtmlBody: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #1E4364;">Thank You, ${firstName}!</h1>
-        <p>We've received your signed NDA. Thank you for taking this step toward our partnership.</p>
-        <p><strong>What's Next:</strong></p>
-        <ul>
-          <li>Our team will review your company profile</li>
-          <li>We'll schedule an introductory call within 24-48 hours</li>
-          <li>You'll receive tailored recommendations based on your business needs</li>
-        </ul>
-        <p>In the meantime, feel free to reach out if you have any questions.</p>
-        <p>Best regards,<br>The One2b Partnerships Team</p>
-      </div>
-    `,
-    TextBody: `Thank You, ${firstName}!\n\nWe've received your signed NDA. Thank you for taking this step toward our partnership.\n\nWhat's Next:\n- Our team will review your company profile\n- We'll schedule an introductory call within 24-48 hours\n- You'll receive tailored recommendations based on your business needs\n\nIn the meantime, feel free to reach out if you have any questions.\n\nBest regards,\nThe One2b Partnerships Team`,
-    MessageStream: 'outbound',
-  });
+      await postmarkClient.sendEmail({
+        From: 'jps@12butterflies.life',
+        To: envelope.recipientEmail,
+        Subject: 'NDA Signed - Next Steps with One2b',
+        HtmlBody: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #1E4364;">Thank You, ${firstName}!</h1>
+            <p>We've received your signed NDA. Thank you for taking this important step.</p>
+            <p><strong>What's Next:</strong></p>
+            <ul>
+              <li>Our team will review your submission</li>
+              <li>We'll be in touch within 24-48 hours</li>
+              <li>You'll receive next steps tailored to your needs</li>
+            </ul>
+            <p>In the meantime, feel free to reach out if you have any questions.</p>
+            <p>Best regards,<br>The One2b Team</p>
+          </div>
+        `,
+        TextBody: `Thank You, ${firstName}!\n\nWe've received your signed NDA. Thank you for taking this important step.\n\nWhat's Next:\n- Our team will review your submission\n- We'll be in touch within 24-48 hours\n- You'll receive next steps tailored to your needs\n\nIn the meantime, feel free to reach out if you have any questions.\n\nBest regards,\nThe One2b Team`,
+        MessageStream: 'outbound',
+      });
 
-  console.log(
-    `✅ Company NDA signed - next steps email sent to: ${envelope.recipientEmail}`
-  );
+      console.log(
+        `✅ ${label} NDA signed - confirmation email sent to: ${envelope.recipientEmail}`
+      );
+    }
+  }
 }
 
 const run = async () => {
@@ -929,7 +971,19 @@ const run = async () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const envelope = await (db as any).docuSignEnvelope.findUnique({
           where: { envelopeId },
-          include: { communityLead: true, companyLead: true },
+          include: {
+            communityLead: true,
+            companyLead: true,
+            investorLead: true,
+            channelPartnerLead: true,
+            carbonProjectLead: true,
+            deRiskPortfolioLead: true,
+            partnerLead: true,
+            projectLead: true,
+            sovereignEntityLead: true,
+            crmAssessmentLead: true,
+            pdvLead: true,
+          },
         });
 
         if (!envelope) {
@@ -956,6 +1010,9 @@ const run = async () => {
         console.log(
           `✅ Updated envelope ${envelopeId} status to: ${newStatus}`
         );
+
+        // Update ndaStatus on all linked leads for every status change
+        await updateAllLeadNdaStatus(envelope, newStatus);
 
         // Handle completion based on document type
         if (newStatus === 'SIGNED') {
@@ -991,16 +1048,7 @@ const run = async () => {
               break;
 
             case 'COMPANY_NDA':
-              if (envelope.companyLeadId) {
-                await handleCompanyNdaSigned(
-                  {
-                    companyLeadId: envelope.companyLeadId,
-                    recipientEmail: envelope.recipientEmail,
-                    recipientName: envelope.recipientName,
-                  },
-                  postmarkClient
-                );
-              }
+              await handleGenericNdaSigned(envelope, postmarkClient);
               break;
 
             default:
