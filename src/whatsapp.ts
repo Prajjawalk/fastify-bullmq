@@ -1,6 +1,5 @@
 import makeWASocket, {
   DisconnectReason,
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
   type WASocket,
   type WAMessage,
@@ -9,6 +8,8 @@ import makeWASocket, {
   getContentType,
   downloadMediaMessage,
 } from '@whiskeysockets/baileys';
+import { useEncryptedMultiFileAuthState } from './encrypted-auth-state';
+import { encrypt } from './crypto';
 import { Boom } from '@hapi/boom';
 import QRCode from 'qrcode';
 import { db } from './db';
@@ -68,7 +69,7 @@ export class WhatsAppService {
     });
 
     const authPath = path.join(this.authBasePath, sessionId);
-    const { state, saveCreds } = await useMultiFileAuthState(authPath);
+    const { state, saveCreds } = await useEncryptedMultiFileAuthState(authPath);
     const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
@@ -76,12 +77,122 @@ export class WhatsAppService {
       auth: state,
       printQRInTerminal: false,
       defaultQueryTimeoutMs: undefined,
+      // Request full history sync from WhatsApp on initial connection.
+      // Without this, Baileys only fetches a minimal sync and most history is dropped.
+      syncFullHistory: true,
+      // Always accept history messages
+      shouldSyncHistoryMessage: () => true,
     });
 
     this.sockets.set(sessionId, sock);
 
     // Handle credentials update
     sock.ev.on('creds.update', saveCreds);
+
+    // ─── History sync: process the full dump Baileys sends after connection ───
+    // This event fires (potentially multiple times) during initial sync with the
+    // user's chat history. We store ALL messages from ALL groups, even those not
+    // yet imported — when a user imports a group later, the historical messages
+    // are already there. Groups discovered through history are auto-created with
+    // importStatus='PENDING' and populated with metadata when fetchGroups is called.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sock.ev.on('messaging-history.set', async (historyData: any) => {
+      try {
+        const messages = (historyData?.messages ?? []) as WAMessage[];
+        const isLatest = historyData?.isLatest as boolean | undefined;
+
+        if (messages.length === 0) return;
+
+        console.log(
+          `📥 [history.set] session ${sessionId} received ${messages.length} historical messages (isLatest=${isLatest})`
+        );
+
+        // Cache existing groups for this session — we'll auto-create new ones as needed
+        const groupCache = new Map<string, string>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existingGroups = await (db as any).whatsAppGroup.findMany({
+          where: { sessionId },
+          select: { id: true, whatsappGroupId: true },
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const g of existingGroups as any[]) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+          groupCache.set(g.whatsappGroupId, g.id);
+        }
+
+        let stored = 0;
+        let skipped = 0;
+        let groupsCreated = 0;
+
+        for (const msg of messages) {
+          const remoteJid = msg.key.remoteJid;
+          if (!remoteJid) continue;
+          if (!msg.message) continue;
+
+          // Only process group messages (skip direct/private chats)
+          if (!remoteJid.endsWith('@g.us')) {
+            skipped++;
+            continue;
+          }
+
+          const whatsappMsgId = msg.key.id ?? '';
+          if (!whatsappMsgId) continue;
+
+          // Get or create group row in DB
+          let groupDbId = groupCache.get(remoteJid);
+          if (!groupDbId) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const newGroup = await (db as any).whatsAppGroup.create({
+                data: {
+                  sessionId,
+                  whatsappGroupId: remoteJid,
+                  name: encrypt('Unknown Group') ?? '', // Will be updated when fetchGroups runs
+                  importStatus: 'PENDING',
+                },
+              });
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              groupDbId = newGroup.id as string;
+              if (groupDbId) {
+                groupCache.set(remoteJid, groupDbId);
+                groupsCreated++;
+              }
+            } catch (err) {
+              console.error(
+                `Failed to auto-create group ${remoteJid}:`,
+                err
+              );
+              continue;
+            }
+          }
+
+          if (!groupDbId) continue;
+
+          // Deduplicate
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const existing = await (db as any).whatsAppMessage.findFirst({
+            where: { groupId: groupDbId, whatsappMsgId },
+          });
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          try {
+            await this.storeMessage(msg, groupDbId);
+            stored++;
+          } catch (err) {
+            console.error('Error storing history message:', err);
+          }
+        }
+
+        console.log(
+          `📥 [history.set] session ${sessionId}: stored ${stored} messages, skipped ${skipped}, created ${groupsCreated} new group(s)`
+        );
+      } catch (err) {
+        console.error('Error processing messaging-history.set event:', err);
+      }
+    });
 
     // Handle connection updates
     sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
@@ -210,8 +321,10 @@ export class WhatsAppService {
       });
     }
 
-    // Save groups to DB
+    // Save groups to DB (name and description are encrypted at rest)
     for (const group of groupList) {
+      const encName = encrypt(group.name) ?? '';
+      const encDescription = encrypt(group.description ?? null);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (db as any).whatsAppGroup.upsert({
         where: {
@@ -223,13 +336,13 @@ export class WhatsAppService {
         create: {
           sessionId,
           whatsappGroupId: group.id,
-          name: group.name,
-          description: group.description,
+          name: encName,
+          description: encDescription,
           participantCount: group.participantCount,
         },
         update: {
-          name: group.name,
-          description: group.description,
+          name: encName,
+          description: encDescription,
           participantCount: group.participantCount,
         },
       });
@@ -364,6 +477,7 @@ export class WhatsAppService {
           let contactId: string | null = null;
 
           if (senderPhone) {
+            const encPushName = msg.pushName ? encrypt(msg.pushName) : undefined;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const contact = await (db as any).whatsAppContact.upsert({
               where: {
@@ -375,10 +489,10 @@ export class WhatsAppService {
               create: {
                 groupId: groupDbId,
                 phoneNumber: senderPhone,
-                pushName: msg.pushName ?? undefined,
+                pushName: encPushName ?? undefined,
               },
               update: {
-                ...(msg.pushName ? { pushName: msg.pushName } : {}),
+                ...(encPushName ? { pushName: encPushName } : {}),
               },
             });
             contactId = contact.id;
@@ -391,7 +505,8 @@ export class WhatsAppService {
               )
             : new Date();
 
-          // Store message
+          // Store message (content is encrypted at rest)
+          const encContent = encrypt(content);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const savedMsg = await (db as any).whatsAppMessage.create({
             data: {
@@ -399,7 +514,7 @@ export class WhatsAppService {
               contactId,
               whatsappMsgId: msg.key.id ?? `unknown-${Date.now()}`,
               messageType,
-              content,
+              content: encContent,
               timestamp,
             },
           });
@@ -695,6 +810,7 @@ export class WhatsAppService {
     let contactId: string | null = null;
 
     if (senderPhone) {
+      const encPushName = msg.pushName ? encrypt(msg.pushName) : undefined;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const contact = await (db as any).whatsAppContact.upsert({
         where: {
@@ -706,10 +822,10 @@ export class WhatsAppService {
         create: {
           groupId: groupDbId,
           phoneNumber: senderPhone,
-          pushName: msg.pushName ?? undefined,
+          pushName: encPushName ?? undefined,
         },
         update: {
-          ...(msg.pushName ? { pushName: msg.pushName } : {}),
+          ...(encPushName ? { pushName: encPushName } : {}),
         },
       });
       contactId = contact.id;
@@ -719,6 +835,8 @@ export class WhatsAppService {
       ? new Date(Number(msg.messageTimestamp) * 1000)
       : new Date();
 
+    // Encrypt content at rest
+    const encContent = encrypt(content);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const savedMsg = await (db as any).whatsAppMessage.create({
       data: {
@@ -726,7 +844,7 @@ export class WhatsAppService {
         contactId,
         whatsappMsgId: msg.key.id ?? `unknown-${Date.now()}`,
         messageType,
-        content,
+        content: encContent,
         timestamp,
       },
     });
