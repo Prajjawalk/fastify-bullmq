@@ -119,9 +119,10 @@ export async function useEncryptedMultiFileAuthState(
                 | SignalDataTypeMap[T]
                 | null;
               if (value && type === 'app-state-sync-key') {
+                // v7: fromObject is deprecated; use create() for the same effect.
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-                value = proto.Message.AppStateSyncKeyData.fromObject(
-                  value as object,
+                value = proto.Message.AppStateSyncKeyData.create(
+                  value as proto.Message.IAppStateSyncKeyData,
                 ) as unknown as SignalDataTypeMap[T];
               }
               if (value) {

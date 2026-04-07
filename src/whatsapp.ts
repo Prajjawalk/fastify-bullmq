@@ -3,14 +3,69 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   type WASocket,
   type WAMessage,
+  type WAMessageKey,
   type ConnectionState,
   type MessageUpsertType,
   getContentType,
   downloadMediaMessage,
+  isLidUser,
+  isPnUser,
 } from '@whiskeysockets/baileys';
 import { useEncryptedMultiFileAuthState } from './encrypted-auth-state';
 import { encrypt, encryptBuffer } from './crypto';
 import { uploadToS3, getS3Url, isS3Configured } from './s3';
+
+/**
+ * Extract the sender's JID from a Baileys v7 message key.
+ *
+ * In v7, the key may contain:
+ * - `participant`: the primary ID (could be LID `@lid` format for new accounts,
+ *   or PN `@s.whatsapp.net` for legacy accounts)
+ * - `participantAlt`: the alternate format (phone number if `participant` is a LID,
+ *   or vice versa)
+ *
+ * For our DB we want the phone number (PN) format whenever possible,
+ * because phone numbers are stable across LID rotations and are user-recognisable.
+ *
+ * Returns the best available JID, preferring PN format. May return a LID
+ * if no PN is available — in that case, the lid-mapping store should be
+ * consulted asynchronously to resolve the PN.
+ */
+function getSenderJidFromKey(
+  key: WAMessageKey,
+  ownJid?: string,
+): string | null {
+  // Self-sent message — return the connected user's JID
+  if (key.fromMe) return ownJid ?? null;
+
+  const remoteJid = key.remoteJid ?? '';
+  const isGroup = remoteJid.endsWith('@g.us');
+
+  if (!isGroup) {
+    // Direct message: remoteJid is the contact. Prefer PN format.
+    if (isPnUser(remoteJid)) return remoteJid;
+    if (key.remoteJidAlt && isPnUser(key.remoteJidAlt)) {
+      return key.remoteJidAlt;
+    }
+    // Fall back to whatever we have
+    return remoteJid || null;
+  }
+
+  // Group message: actual sender is in `participant` (or `participantAlt`)
+  const participant = key.participant ?? null;
+  const participantAlt = key.participantAlt ?? null;
+
+  // Prefer PN format
+  if (participant && isPnUser(participant)) return participant;
+  if (participantAlt && isPnUser(participantAlt)) return participantAlt;
+
+  // Both might be LIDs — return whichever we have so the caller can try
+  // to resolve via the lid-mapping store later
+  if (participant && isLidUser(participant)) return participant;
+  if (participantAlt && isLidUser(participantAlt)) return participantAlt;
+
+  return participant ?? participantAlt;
+}
 
 /**
  * Convert a Baileys numeric field (which can be a number, bigint, or Long
@@ -873,8 +928,10 @@ export class WhatsAppService {
       });
       if (!targetMessage) return;
 
-      const reactorJid = msg.key.participant ?? msg.key.remoteJid ?? '';
-      const reactorPhone = reactorJid.split('@')[0] ?? reactorJid;
+      // Reactor JID — use v7-aware extraction (handles LID/PN/alt fields)
+      const reactorJid = getSenderJidFromKey(msg.key);
+      if (!reactorJid) return;
+      const reactorPhone = (reactorJid.split('@')[0] ?? '').split(':')[0] ?? '';
       if (!reactorPhone) return;
 
       const encReactorPushName = msg.pushName ? encrypt(msg.pushName) : null;
@@ -974,9 +1031,28 @@ export class WhatsAppService {
         messageType = contentType;
     }
 
-    // Find or create contact
-    const senderJid = msg.key.participant ?? msg.key.remoteJid ?? '';
-    const senderPhone = senderJid.split('@')[0] ?? senderJid;
+    // Find or create contact (uses v7-aware sender extraction)
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const ownJid = (sock?.user?.id as string | undefined) ?? undefined;
+    let senderJid = getSenderJidFromKey(msg.key, ownJid);
+
+    // If we got a LID and the socket is available, try to resolve to a phone number
+    // via the lid-mapping store for a better contact identifier.
+    if (senderJid && isLidUser(senderJid) && sock) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+        const resolved = await (sock as any).signalRepository?.lidMapping?.getPNForLID?.(senderJid);
+        if (resolved && typeof resolved === 'string') {
+          senderJid = resolved;
+        }
+      } catch {
+        // Ignore lid-mapping resolution failures — fall back to LID
+      }
+    }
+
+    const senderPhone = senderJid
+      ? (senderJid.split('@')[0] ?? '').split(':')[0] ?? ''
+      : '';
     let contactId: string | null = null;
 
     if (senderPhone) {
