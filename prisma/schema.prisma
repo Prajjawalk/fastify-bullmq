@@ -1,10 +1,25 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+model KnowledgeChunk {
+  id        String   @id @default(cuid())
+  source    String   // e.g. "data_valuation_book", "platform_knowledge_base"
+  section   String   // chapter/section title
+  content   String   // the actual text chunk
+  metadata  Json?    // additional metadata (chapter number, page, etc.)
+  embedding Unsupported("vector(1024)")? // Voyage AI voyage-3 dimension
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("knowledge_chunks")
 }
 
 model Account {
@@ -378,12 +393,13 @@ model OrganizationInvitation {
 }
 
 model OrganizationNotification {
-  id                      String   @id @default(cuid())
+  id                      String                     @id @default(cuid())
   notificationTitle       String
   notificationDescription String
   refLink                 String?
   notificationRead        Boolean
-  createdAt               DateTime @default(now())
+  targetAudience          NotificationTargetAudience @default(USER)
+  createdAt               DateTime                   @default(now())
   organizationId          String
   platformId              String
 
@@ -392,6 +408,13 @@ model OrganizationNotification {
 
   @@index([organizationId])
   @@index([platformId])
+  @@index([targetAudience])
+}
+
+enum NotificationTargetAudience {
+  ALL
+  ADMIN
+  USER
 }
 
 model Post {
@@ -617,6 +640,7 @@ model User {
   dataValuationReportsRequested DataValuationReport[] @relation("DataValuationReport_requestedBy")
   dataValuationReportsApproved  DataValuationReport[] @relation("DataValuationReport_approvedBy")
   firefliesApiKeys           FirefliesApiKey[]
+  whatsAppSessions           WhatsAppSession[]        @relation("WhatsAppSessionOwner")
 }
 
 model VerificationToken {
@@ -2470,7 +2494,13 @@ model WhatsAppSession {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // Owner of this session — only this user can view/manage it
+  userId String?
+  user   User?   @relation("WhatsAppSessionOwner", fields: [userId], references: [id], onDelete: Cascade)
+
   groups WhatsAppGroup[]
+
+  @@index([userId])
 }
 
 model WhatsAppGroup {
@@ -2521,23 +2551,49 @@ model WhatsAppMessage {
   timestamp     DateTime
   createdAt     DateTime  @default(now())
 
-  media WhatsAppMedia?
+  // Quoted message (for replies) — self-relation
+  quotedMessageId String?
+  quotedMessage   WhatsAppMessage?  @relation("QuotedMessage", fields: [quotedMessageId], references: [id], onDelete: SetNull)
+  replies         WhatsAppMessage[] @relation("QuotedMessage")
+
+  media     WhatsAppMedia?
+  reactions WhatsAppReaction[]
 
   @@index([groupId, timestamp])
   @@index([contactId])
+  @@index([quotedMessageId])
 }
 
 model WhatsAppMedia {
-  id        String   @id @default(cuid())
-  messageId String   @unique
-  message   WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  mediaType String   // image | video | document | audio
-  mimeType  String?
-  fileName  String?
-  fileSize  Int?
-  s3Key     String?
-  s3Url     String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  messageId  String   @unique
+  message    WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mediaType  String   // image | video | document | audio
+  mimeType   String?
+  fileName   String?
+  fileSize   Int?
+  // Inline encrypted media bytes (small media only — <2MB)
+  // For larger files, use s3Url instead.
+  mediaData  Bytes?
+  width      Int?
+  height     Int?
+  s3Key      String?
+  s3Url      String?
+  createdAt  DateTime @default(now())
+}
+
+model WhatsAppReaction {
+  id           String          @id @default(cuid())
+  messageId    String
+  message      WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reactorPhone String          // Phone number of the person who reacted
+  reactorPushName String?      // Display name (encrypted at rest)
+  emoji        String          // The reaction emoji (e.g. "👍", "❤️")
+  timestamp    DateTime
+  createdAt    DateTime        @default(now())
+
+  @@unique([messageId, reactorPhone])
+  @@index([messageId])
 }
 
 // Monday.com CRM Sync Tracking
