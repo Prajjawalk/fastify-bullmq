@@ -513,6 +513,64 @@ export class WhatsAppService {
     return this.importProgress.get(groupDbId) ?? null;
   }
 
+  /**
+   * Restore all previously CONNECTED sessions on server startup.
+   * Reads sessions from the database and reconnects each one using
+   * the persisted Baileys auth state in .whatsapp-auth/{sessionId}/.
+   * Sessions whose auth files no longer exist are marked DISCONNECTED.
+   */
+  async restoreSessions(): Promise<void> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sessions = await (db as any).whatsAppSession.findMany({
+        where: {
+          status: 'CONNECTED',
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (sessions.length === 0) {
+        console.log('🔄 No previously connected WhatsApp sessions to restore');
+        return;
+      }
+
+      console.log(
+        `🔄 Restoring ${sessions.length} WhatsApp session(s) from previous run...`
+      );
+
+      for (const session of sessions) {
+        const authPath = path.join(this.authBasePath, session.id);
+        if (!fs.existsSync(authPath)) {
+          console.warn(
+            `⚠️ Auth files missing for session ${session.id}, marking as DISCONNECTED`
+          );
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (db as any).whatsAppSession.update({
+            where: { id: session.id },
+            data: { status: 'DISCONNECTED' },
+          });
+          continue;
+        }
+
+        try {
+          // Stagger reconnections so we don't hammer WhatsApp servers
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          void this.connect(session.id);
+          console.log(`🔄 Reconnect initiated for session ${session.id}`);
+        } catch (err) {
+          console.error(
+            `❌ Failed to restore session ${session.id}:`,
+            err
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Error restoring WhatsApp sessions:', err);
+    }
+  }
+
   getSessionStatus(sessionId: string): string {
     const sock = this.sockets.get(sessionId);
     if (!sock) return 'DISCONNECTED';

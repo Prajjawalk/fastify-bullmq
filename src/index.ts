@@ -1247,6 +1247,11 @@ const run = async () => {
   console.log(
     `To populate the queue and demo the UI, run: curl https://${env.RAILWAY_STATIC_URL}/add-job?id=1&email=hello%40world.com`
   );
+
+  // Restore previously connected WhatsApp sessions (fire-and-forget so it
+  // doesn't block the listen call). Each session reconnects via persisted
+  // Baileys auth state in .whatsapp-auth/{sessionId}/.
+  void whatsappService.restoreSessions();
 };
 
 run().catch((e) => {
