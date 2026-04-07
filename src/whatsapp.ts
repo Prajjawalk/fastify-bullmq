@@ -727,49 +727,66 @@ export class WhatsAppService {
    */
   async restoreSessions(): Promise<void> {
     try {
+      // Restore any session whose auth files still exist on disk —
+      // regardless of DB status. This handles two cases:
+      // 1. Server restart (DB says CONNECTED but the socket is dead)
+      // 2. Auto-reconnect attempt that exited before completing (DB might
+      //    say DISCONNECTED but the credentials are still valid)
+      // Sessions where the user explicitly logged out have their auth files
+      // deleted (see disconnect()), so they won't be restored.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sessions = await (db as any).whatsAppSession.findMany({
-        where: {
-          status: 'CONNECTED',
-        },
         select: {
           id: true,
+          status: true,
         },
       });
 
       if (sessions.length === 0) {
-        console.log('🔄 No previously connected WhatsApp sessions to restore');
+        console.log('🔄 No WhatsApp sessions in database to restore');
+        return;
+      }
+
+      // Filter to sessions whose auth files still exist on disk
+      const restorable: { id: string; status: string }[] = [];
+      for (const s of sessions) {
+        const authPath = path.join(this.authBasePath, s.id);
+        if (fs.existsSync(authPath)) {
+          restorable.push(s);
+        } else if (s.status === 'CONNECTED') {
+          // DB says CONNECTED but auth files are gone — fix the inconsistency
+          console.warn(
+            `⚠️ Auth files missing for session ${s.id}, marking as DISCONNECTED`,
+          );
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (db as any).whatsAppSession.update({
+            where: { id: s.id },
+            data: { status: 'DISCONNECTED' },
+          });
+        }
+      }
+
+      if (restorable.length === 0) {
+        console.log(
+          '🔄 No restorable WhatsApp sessions found (no auth files on disk)',
+        );
         return;
       }
 
       console.log(
-        `🔄 Restoring ${sessions.length} WhatsApp session(s) from previous run...`
+        `🔄 Restoring ${restorable.length} WhatsApp session(s) from previous run...`,
       );
 
-      for (const session of sessions) {
-        const authPath = path.join(this.authBasePath, session.id);
-        if (!fs.existsSync(authPath)) {
-          console.warn(
-            `⚠️ Auth files missing for session ${session.id}, marking as DISCONNECTED`
-          );
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (db as any).whatsAppSession.update({
-            where: { id: session.id },
-            data: { status: 'DISCONNECTED' },
-          });
-          continue;
-        }
-
+      for (const session of restorable) {
         try {
           // Stagger reconnections so we don't hammer WhatsApp servers
           await new Promise((resolve) => setTimeout(resolve, 500));
           void this.connect(session.id);
-          console.log(`🔄 Reconnect initiated for session ${session.id}`);
-        } catch (err) {
-          console.error(
-            `❌ Failed to restore session ${session.id}:`,
-            err
+          console.log(
+            `🔄 Reconnect initiated for session ${session.id} (was ${session.status})`,
           );
+        } catch (err) {
+          console.error(`❌ Failed to restore session ${session.id}:`, err);
         }
       }
     } catch (err) {
