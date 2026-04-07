@@ -1215,8 +1215,20 @@ export class WhatsAppService {
 
     let senderJid = getSenderJidFromKey(msg.key, ownJid);
 
+    // History sync fallback: WAMessage has a top-level `participant` field
+    // (separate from `key.participant`) that's populated for history-synced
+    // group messages where the key.participant is missing.
+    if (!senderJid) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+      const topLevelParticipant = (msg as any).participant as
+        | string
+        | undefined;
+      if (topLevelParticipant) {
+        senderJid = topLevelParticipant;
+      }
+    }
+
     // Additional fallback: try to extract from contextInfo.participant
-    // (sometimes set on history-synced messages)
     if (!senderJid) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
       const ctxParticipant = msgAny[contentType]?.contextInfo?.participant as
@@ -1246,9 +1258,11 @@ export class WhatsAppService {
       : '';
 
     if (!senderPhone) {
-      // Diagnostic: log the key shape so we can see why extraction failed
+      // Diagnostic: log the key + top-level fields so we can see why extraction failed
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+      const topParticipant = (msg as any).participant as string | undefined;
       console.warn(
-        `⚠️ No sender extracted for message ${msg.key.id}: fromMe=${msg.key.fromMe}, participant=${msg.key.participant}, participantAlt=${msg.key.participantAlt ?? 'none'}, remoteJid=${msg.key.remoteJid}`,
+        `⚠️ No sender extracted for message ${msg.key.id}: fromMe=${msg.key.fromMe}, key.participant=${msg.key.participant}, key.participantAlt=${msg.key.participantAlt ?? 'none'}, msg.participant=${topParticipant ?? 'none'}, remoteJid=${msg.key.remoteJid}`,
       );
     }
 
