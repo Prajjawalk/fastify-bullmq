@@ -9,7 +9,32 @@ import makeWASocket, {
   downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import { useEncryptedMultiFileAuthState } from './encrypted-auth-state';
-import { encrypt } from './crypto';
+import { encrypt, encryptBuffer } from './crypto';
+import { uploadToS3, getS3Url, isS3Configured } from './s3';
+
+/**
+ * Convert a Baileys numeric field (which can be a number, bigint, or Long
+ * protobuf object with {low, high, unsigned}) to a regular Int for Prisma.
+ * Returns null for missing or invalid values.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toIntOrNull(value: any): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Math.trunc(value);
+  if (typeof value === 'bigint') return Number(value);
+  // Long protobuf object
+  if (typeof value === 'object' && 'low' in value && 'high' in value) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+    const low = value.low as number;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+    const high = value.high as number;
+    return high * 0x100000000 + (low >>> 0);
+  }
+  // Try string conversion as last resort
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
 import { Boom } from '@hapi/boom';
 import QRCode from 'qrcode';
 import { db } from './db';
@@ -179,7 +204,7 @@ export class WhatsAppService {
           }
 
           try {
-            await this.storeMessage(msg, groupDbId);
+            await this.storeMessage(msg, groupDbId, sock);
             stored++;
           } catch (err) {
             console.error('Error storing history message:', err);
@@ -529,7 +554,8 @@ export class WhatsAppService {
               const mediaMsg = msgAny[contentType];
               const mimeType = (mediaMsg?.mimetype as string) ?? null;
               const fileName = (mediaMsg?.fileName as string) ?? null;
-              const fileSize = (mediaMsg?.fileLength as number) ?? null;
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              const fileSize = toIntOrNull(mediaMsg?.fileLength);
 
               // Store media metadata (S3 upload can be done later)
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -686,6 +712,50 @@ export class WhatsAppService {
     }
   }
 
+  /**
+   * Send a reply (quoted message) to a WhatsApp group.
+   */
+  async sendReply(params: {
+    sessionId: string;
+    whatsappGroupId: string;
+    quotedMessageId: string;
+    quotedContent: string;
+    quotedSenderPhone: string;
+    text: string;
+  }): Promise<{ messageId: string | null }> {
+    const sock = this.sockets.get(params.sessionId);
+    if (!sock?.user) {
+      throw new Error(`Session ${params.sessionId} not connected`);
+    }
+
+    // Reconstruct the quoted message reference for Baileys
+    const senderJid = params.quotedSenderPhone
+      ? `${params.quotedSenderPhone}@s.whatsapp.net`
+      : params.whatsappGroupId;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const quoted: any = {
+      key: {
+        id: params.quotedMessageId,
+        remoteJid: params.whatsappGroupId,
+        fromMe: false,
+        participant: senderJid,
+      },
+      message: {
+        conversation: params.quotedContent || ' ',
+      },
+    };
+
+    const result = await sock.sendMessage(
+      params.whatsappGroupId,
+      { text: params.text },
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      { quoted },
+    );
+
+    return { messageId: result?.key?.id ?? null };
+  }
+
   getSessionStatus(sessionId: string): string {
     const sock = this.sockets.get(sessionId);
     if (!sock) return 'DISCONNECTED';
@@ -739,6 +809,18 @@ export class WhatsAppService {
         if (!groupDbId) continue; // Not an imported group
         if (!msg.message) continue;
 
+        // Reaction message — store as a reaction, not as a regular message
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+        const reactionMessage = (msg.message as any).reactionMessage;
+        if (reactionMessage) {
+          await this.storeReaction(msg, groupDbId, reactionMessage as {
+            key?: { id?: string };
+            text?: string;
+            senderTimestampMs?: number | { low: number; high: number };
+          });
+          continue;
+        }
+
         // Deduplicate: check if message already stored
         const whatsappMsgId = msg.key.id ?? '';
         if (!whatsappMsgId) continue;
@@ -750,7 +832,7 @@ export class WhatsAppService {
         if (existing) continue;
 
         try {
-          await this.storeMessage(msg, groupDbId);
+          await this.storeMessage(msg, groupDbId, sock);
         } catch (err) {
           console.error('Error storing synced message:', err);
         }
@@ -758,11 +840,89 @@ export class WhatsAppService {
     });
   }
 
+  // ─── Store a reaction ─────────────────────────────────
+  private async storeReaction(
+    msg: WAMessage,
+    groupDbId: string,
+    reactionMessage: {
+      key?: { id?: string };
+      text?: string;
+      senderTimestampMs?: number | { low: number; high: number };
+    },
+  ): Promise<void> {
+    try {
+      const targetMsgId = reactionMessage.key?.id;
+      const emoji = reactionMessage.text ?? '';
+      if (!targetMsgId) return;
+
+      // Find the target message in our DB
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const targetMessage = await (db as any).whatsAppMessage.findFirst({
+        where: { groupId: groupDbId, whatsappMsgId: targetMsgId },
+        select: { id: true },
+      });
+      if (!targetMessage) return;
+
+      const reactorJid = msg.key.participant ?? msg.key.remoteJid ?? '';
+      const reactorPhone = reactorJid.split('@')[0] ?? reactorJid;
+      if (!reactorPhone) return;
+
+      const encReactorPushName = msg.pushName ? encrypt(msg.pushName) : null;
+
+      const tsRaw = reactionMessage.senderTimestampMs ?? msg.messageTimestamp;
+      const timestamp = tsRaw
+        ? new Date(toIntOrNull(tsRaw) ?? Date.now())
+        : new Date();
+
+      // Empty emoji means the user removed their reaction
+      if (emoji === '') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (db as any).whatsAppReaction
+          .deleteMany({
+            where: {
+              messageId: targetMessage.id as string,
+              reactorPhone,
+            },
+          })
+          .catch(() => undefined);
+        return;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).whatsAppReaction.upsert({
+        where: {
+          messageId_reactorPhone: {
+            messageId: targetMessage.id as string,
+            reactorPhone,
+          },
+        },
+        create: {
+          messageId: targetMessage.id as string,
+          reactorPhone,
+          reactorPushName: encReactorPushName,
+          emoji,
+          timestamp,
+        },
+        update: {
+          emoji,
+          timestamp,
+          ...(encReactorPushName ? { reactorPushName: encReactorPushName } : {}),
+        },
+      });
+    } catch (err) {
+      console.error('Error storing reaction:', err);
+    }
+  }
+
   // ─── Store a single message (shared by import & sync) ──
+
+  // Max bytes to inline as encrypted blob (2MB). Larger media gets metadata only.
+  private static readonly MAX_INLINE_MEDIA_BYTES = 2 * 1024 * 1024;
 
   private async storeMessage(
     msg: WAMessage,
-    groupDbId: string
+    groupDbId: string,
+    sock?: WASocket,
   ): Promise<void> {
     const contentType = getContentType(msg.message!);
     if (!contentType) return;
@@ -835,6 +995,23 @@ export class WhatsAppService {
       ? new Date(Number(msg.messageTimestamp) * 1000)
       : new Date();
 
+    // Extract quoted message reference (for replies)
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+    const contextInfo = msgAny[contentType]?.contextInfo as
+      | { stanzaId?: string; participant?: string }
+      | undefined;
+    const quotedWhatsappMsgId = contextInfo?.stanzaId ?? null;
+
+    let quotedMessageId: string | null = null;
+    if (quotedWhatsappMsgId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const quoted = await (db as any).whatsAppMessage.findFirst({
+        where: { groupId: groupDbId, whatsappMsgId: quotedWhatsappMsgId },
+        select: { id: true },
+      });
+      if (quoted) quotedMessageId = quoted.id as string;
+    }
+
     // Encrypt content at rest
     const encContent = encrypt(content);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -846,19 +1023,90 @@ export class WhatsAppService {
         messageType,
         content: encContent,
         timestamp,
+        quotedMessageId,
       },
     });
 
-    // Handle media metadata
+    // Handle media — metadata + S3 upload (or inline fallback)
     if (
-      ['image', 'video', 'document', 'audio'].includes(messageType) &&
+      ['image', 'video', 'document', 'audio', 'sticker'].includes(messageType) &&
       msg.message
     ) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const mediaMsg = msgAny[contentType];
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         const mimeType = (mediaMsg?.mimetype as string) ?? null;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         const fileName = (mediaMsg?.fileName as string) ?? null;
-        const fileSize = (mediaMsg?.fileLength as number) ?? null;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const fileSize = toIntOrNull(mediaMsg?.fileLength);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const width = toIntOrNull(mediaMsg?.width);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const height = toIntOrNull(mediaMsg?.height);
+
+        // Download media bytes (we'll upload to S3 if configured, fall back to inline)
+        let downloadedBuffer: Buffer | null = null;
+        if (sock) {
+          try {
+            const downloaded = await downloadMediaMessage(
+              msg,
+              'buffer',
+              {},
+              {
+                logger: undefined as never,
+                reuploadRequest: sock.updateMediaMessage,
+              },
+            );
+            if (downloaded instanceof Buffer) {
+              downloadedBuffer = downloaded;
+            }
+          } catch (dlErr) {
+            console.warn(
+              `Could not download media for message ${savedMsg.id as string}:`,
+              dlErr instanceof Error ? dlErr.message : dlErr,
+            );
+          }
+        }
+
+        // Choose storage destination: S3 (if configured) or inline
+        let s3Key: string | null = null;
+        let s3Url: string | null = null;
+        let mediaData: Buffer | null = null;
+
+        if (downloadedBuffer) {
+          // Encrypt the bytes before any storage
+          const encrypted = encryptBuffer(downloadedBuffer);
+
+          if (isS3Configured()) {
+            // Upload to S3 — store under whatsapp/{groupDbId}/{messageId}.bin
+            try {
+              const key = `whatsapp/${groupDbId}/${savedMsg.id as string}.bin`;
+              await uploadToS3({
+                key,
+                body: encrypted,
+                contentType: 'application/octet-stream',
+              });
+              s3Key = key;
+              s3Url = getS3Url(key);
+            } catch (s3Err) {
+              console.error(
+                `S3 upload failed for ${savedMsg.id as string}, falling back to inline:`,
+                s3Err instanceof Error ? s3Err.message : s3Err,
+              );
+              // Fall back to inline if file is small enough
+              if (encrypted.length <= WhatsAppService.MAX_INLINE_MEDIA_BYTES) {
+                mediaData = encrypted;
+              }
+            }
+          } else {
+            // No S3 configured — fall back to inline storage for small files
+            if (encrypted.length <= WhatsAppService.MAX_INLINE_MEDIA_BYTES) {
+              mediaData = encrypted;
+            }
+          }
+        }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (db as any).whatsAppMedia.create({
@@ -868,6 +1116,11 @@ export class WhatsAppService {
             mimeType,
             fileName,
             fileSize,
+            width,
+            height,
+            mediaData,
+            s3Key,
+            s3Url,
           },
         });
       } catch (mediaErr) {
@@ -943,7 +1196,7 @@ export class WhatsAppService {
         if (existing) continue;
 
         try {
-          await this.storeMessage(msg, groupDbId);
+          await this.storeMessage(msg, groupDbId, sock);
           messagessynced++;
         } catch (err) {
           console.error('Error storing synced message:', err);

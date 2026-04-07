@@ -1243,6 +1243,36 @@ const run = async () => {
     }
   );
 
+  // Send a reply to a WhatsApp group message
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).post(
+    '/whatsapp/reply',
+    async (
+      req: FastifyRequest<{
+        Body: {
+          sessionId: string;
+          whatsappGroupId: string;
+          quotedMessageId: string;
+          quotedContent: string;
+          quotedSenderPhone: string;
+          text: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      try {
+        const result = await whatsappService.sendReply(req.body);
+        reply.send({ ok: true, ...result });
+      } catch (e) {
+        console.error('Error sending WhatsApp reply:', e);
+        reply.status(500).send({
+          ok: false,
+          error: e instanceof Error ? e.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
   await server.listen({ port: env.PORT, host: '0.0.0.0' });
   console.log(
     `To populate the queue and demo the UI, run: curl https://${env.RAILWAY_STATIC_URL}/add-job?id=1&email=hello%40world.com`

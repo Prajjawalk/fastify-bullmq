@@ -32,4 +32,24 @@ export const env = envsafe({
   DOCUSIGN_USER_ID: str({
     default: '', // The user ID to impersonate for JWT auth
   }),
+  // AWS S3 (for WhatsApp media storage)
+  AWS_REGION: str({
+    default: 'us-east-1',
+  }),
+  AWS_ACCESS_KEY_ID: str({
+    default: '',
+  }),
+  AWS_SECRET_ACCESS_KEY: str({
+    default: '',
+  }),
+  AWS_S3_BUCKET_NAME: str({
+    default: '',
+  }),
+  AWS_S3_ENDPOINT_URL: str({
+    default: '', // Optional: custom endpoint for S3-compatible services
+  }),
+  // WhatsApp encryption key (must match the one in one-2b)
+  WHATSAPP_ENCRYPTION_KEY: str({
+    default: '',
+  }),
 });
