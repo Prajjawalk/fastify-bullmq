@@ -163,24 +163,34 @@ export class WhatsAppService {
           const whatsappMsgId = msg.key.id ?? '';
           if (!whatsappMsgId) continue;
 
-          // Get or create group row in DB
+          // Get or create group row in DB (upsert to avoid race conditions
+          // when the same group appears multiple times in the history dump)
           let groupDbId = groupCache.get(remoteJid);
           if (!groupDbId) {
             try {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const newGroup = await (db as any).whatsAppGroup.create({
-                data: {
+              const upsertedGroup = await (db as any).whatsAppGroup.upsert({
+                where: {
+                  sessionId_whatsappGroupId: {
+                    sessionId,
+                    whatsappGroupId: remoteJid,
+                  },
+                },
+                create: {
                   sessionId,
                   whatsappGroupId: remoteJid,
                   name: encrypt('Unknown Group') ?? '', // Will be updated when fetchGroups runs
                   importStatus: 'PENDING',
                 },
+                update: {}, // No-op on conflict — just return the existing row
+                select: { id: true },
               });
               // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              groupDbId = newGroup.id as string;
+              groupDbId = upsertedGroup.id as string;
               if (groupDbId) {
-                groupCache.set(remoteJid, groupDbId);
+                // Only count as created if it wasn't already in our local cache
                 groupsCreated++;
+                groupCache.set(remoteJid, groupDbId);
               }
             } catch (err) {
               console.error(
