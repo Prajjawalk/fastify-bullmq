@@ -124,10 +124,108 @@ export class WhatsAppService {
   private syncTimers: Map<string, NodeJS.Timeout> = new Map(); // sessionId → periodic sync timer
   private authBasePath: string;
 
+  // Track the last DB-persisted auth state size per session, to detect changes
+  private lastPersistedSize: Map<string, number> = new Map();
+  // Periodic persist timers per session
+  private persistTimers: Map<string, NodeJS.Timeout> = new Map();
+
   constructor() {
     this.authBasePath = path.join(process.cwd(), '.whatsapp-auth');
     if (!fs.existsSync(this.authBasePath)) {
       fs.mkdirSync(this.authBasePath, { recursive: true });
+    }
+  }
+
+  /**
+   * Pack all auth files for a session into a JSON blob and store in
+   * `WhatsAppSession.authState`. Files are already encrypted on disk
+   * (via useEncryptedMultiFileAuthState), so we just base64-encode the
+   * raw bytes — no double encryption needed.
+   *
+   * Used as a backup so the session can be restored after Railway/
+   * container redeploys (which wipe the local filesystem).
+   */
+  private async persistAuthStateToDb(sessionId: string): Promise<void> {
+    const authPath = path.join(this.authBasePath, sessionId);
+    if (!fs.existsSync(authPath)) return;
+
+    try {
+      const files = fs.readdirSync(authPath);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blob: Record<string, string> = {};
+      let totalBytes = 0;
+      for (const file of files) {
+        const filePath = path.join(authPath, file);
+        const stats = fs.statSync(filePath);
+        if (!stats.isFile()) continue;
+        const data = fs.readFileSync(filePath);
+        blob[file] = data.toString('base64');
+        totalBytes += data.length;
+      }
+
+      // Skip the write if size hasn't changed (cheap dedup)
+      const previousSize = this.lastPersistedSize.get(sessionId);
+      if (previousSize === totalBytes) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).whatsAppSession.update({
+        where: { id: sessionId },
+        data: { authState: blob },
+      });
+
+      this.lastPersistedSize.set(sessionId, totalBytes);
+      console.log(
+        `💾 Persisted auth state to DB for session ${sessionId} (${files.length} files, ${(totalBytes / 1024).toFixed(1)} KB)`,
+      );
+    } catch (err) {
+      console.error(
+        `Failed to persist auth state for session ${sessionId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  /**
+   * Restore auth files from DB to disk. Called on server startup if the
+   * local files are missing but the DB has a saved blob.
+   * Returns true if files were restored.
+   */
+  private async restoreAuthStateFromDb(sessionId: string): Promise<boolean> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const session = await (db as any).whatsAppSession.findUnique({
+        where: { id: sessionId },
+        select: { authState: true },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+      const blob = session?.authState as Record<string, string> | null;
+      if (!blob || typeof blob !== 'object' || Object.keys(blob).length === 0) {
+        return false;
+      }
+
+      const authPath = path.join(this.authBasePath, sessionId);
+      if (!fs.existsSync(authPath)) {
+        fs.mkdirSync(authPath, { recursive: true });
+      }
+
+      let restored = 0;
+      for (const [filename, base64] of Object.entries(blob)) {
+        const filePath = path.join(authPath, filename);
+        fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+        restored++;
+      }
+
+      console.log(
+        `♻️ Restored ${restored} auth file(s) from DB for session ${sessionId}`,
+      );
+      return true;
+    } catch (err) {
+      console.error(
+        `Failed to restore auth state from DB for session ${sessionId}:`,
+        err instanceof Error ? err.message : err,
+      );
+      return false;
     }
   }
 
@@ -352,8 +450,41 @@ export class WhatsAppService {
 
         // Set up periodic sync (every 10 minutes)
         this.startPeriodicSync(sessionId);
+
+        // Persist auth state to DB now (for redeploy survival),
+        // then schedule periodic persists every 5 minutes
+        void this.persistAuthStateToDb(sessionId);
+        this.startAuthStatePersist(sessionId);
       }
     });
+
+    // Also persist on every credential update (cheap dedup via lastPersistedSize)
+    sock.ev.on('creds.update', () => {
+      void this.persistAuthStateToDb(sessionId);
+    });
+  }
+
+  private startAuthStatePersist(sessionId: string): void {
+    const existing = this.persistTimers.get(sessionId);
+    if (existing) clearInterval(existing);
+
+    // Persist auth state to DB every 5 minutes as a backup
+    const timer = setInterval(
+      () => {
+        void this.persistAuthStateToDb(sessionId);
+      },
+      5 * 60 * 1000,
+    );
+    this.persistTimers.set(sessionId, timer);
+  }
+
+  private stopAuthStatePersist(sessionId: string): void {
+    const timer = this.persistTimers.get(sessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.persistTimers.delete(sessionId);
+    }
+    this.lastPersistedSize.delete(sessionId);
   }
 
   getQRCode(sessionId: string): string | null {
@@ -361,12 +492,13 @@ export class WhatsAppService {
   }
 
   async disconnect(sessionId: string): Promise<void> {
-    // Stop periodic sync
+    // Stop periodic sync and auth state persist
     const timer = this.syncTimers.get(sessionId);
     if (timer) {
       clearInterval(timer);
       this.syncTimers.delete(sessionId);
     }
+    this.stopAuthStatePersist(sessionId);
 
     const sock = this.sockets.get(sessionId);
     if (sock) {
@@ -378,7 +510,7 @@ export class WhatsAppService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any).whatsAppSession.update({
       where: { id: sessionId },
-      data: { status: 'DISCONNECTED' },
+      data: { status: 'DISCONNECTED', authState: null },
     });
 
     // Clean up auth files
@@ -747,16 +879,27 @@ export class WhatsAppService {
         return;
       }
 
-      // Filter to sessions whose auth files still exist on disk
+      // Filter to sessions whose auth state is available — either on disk
+      // or in the DB backup blob (which we restore to disk first)
       const restorable: { id: string; status: string }[] = [];
       for (const s of sessions) {
         const authPath = path.join(this.authBasePath, s.id);
         if (fs.existsSync(authPath)) {
           restorable.push(s);
-        } else if (s.status === 'CONNECTED') {
-          // DB says CONNECTED but auth files are gone — fix the inconsistency
+          continue;
+        }
+
+        // No local files — try restoring from DB backup
+        const restored = await this.restoreAuthStateFromDb(s.id);
+        if (restored) {
+          restorable.push(s);
+          continue;
+        }
+
+        // Neither disk nor DB has auth state
+        if (s.status === 'CONNECTED') {
           console.warn(
-            `⚠️ Auth files missing for session ${s.id}, marking as DISCONNECTED`,
+            `⚠️ Auth files missing for session ${s.id} (no DB backup either), marking as DISCONNECTED`,
           );
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (db as any).whatsAppSession.update({
@@ -1049,9 +1192,40 @@ export class WhatsAppService {
     }
 
     // Find or create contact (uses v7-aware sender extraction)
+    // For fromMe messages, use the connected socket's JID. If not yet
+    // available (early during history sync), fall back to the session's
+    // stored phone number from the DB.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const ownJid = (sock?.user?.id as string | undefined) ?? undefined;
+    let ownJid = (sock?.user?.id as string | undefined) ?? undefined;
+    if (!ownJid && msg.key.fromMe) {
+      try {
+        // Look up the session's phoneNumber from the DB as a fallback
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const grp = await (db as any).whatsAppGroup.findUnique({
+          where: { id: groupDbId },
+          select: { session: { select: { phoneNumber: true } } },
+        });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const ownPhone = grp?.session?.phoneNumber as string | undefined;
+        if (ownPhone) ownJid = `${ownPhone}@s.whatsapp.net`;
+      } catch {
+        // Ignore — will fall through to null senderJid
+      }
+    }
+
     let senderJid = getSenderJidFromKey(msg.key, ownJid);
+
+    // Additional fallback: try to extract from contextInfo.participant
+    // (sometimes set on history-synced messages)
+    if (!senderJid) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+      const ctxParticipant = msgAny[contentType]?.contextInfo?.participant as
+        | string
+        | undefined;
+      if (ctxParticipant) {
+        senderJid = ctxParticipant;
+      }
+    }
 
     // If we got a LID and the socket is available, try to resolve to a phone number
     // via the lid-mapping store for a better contact identifier.
@@ -1070,6 +1244,14 @@ export class WhatsAppService {
     const senderPhone = senderJid
       ? (senderJid.split('@')[0] ?? '').split(':')[0] ?? ''
       : '';
+
+    if (!senderPhone) {
+      // Diagnostic: log the key shape so we can see why extraction failed
+      console.warn(
+        `⚠️ No sender extracted for message ${msg.key.id}: fromMe=${msg.key.fromMe}, participant=${msg.key.participant}, participantAlt=${msg.key.participantAlt ?? 'none'}, remoteJid=${msg.key.remoteJid}`,
+      );
+    }
+
     let contactId: string | null = null;
 
     if (senderPhone) {
