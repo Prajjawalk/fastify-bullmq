@@ -52,4 +52,8 @@ export const env = envsafe({
   WHATSAPP_ENCRYPTION_KEY: str({
     default: '',
   }),
+  // Shared API key for authenticating requests from one-2b
+  INTERNAL_API_KEY: str({
+    default: '',
+  }),
 });

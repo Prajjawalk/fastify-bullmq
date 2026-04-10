@@ -15,6 +15,28 @@ import { db } from './db';
 import { fetchTranscriptFromFireflies } from './fireflies';
 import { MeetingProcessingStatus } from '@prisma/client';
 import { whatsappService } from './whatsapp';
+import { validateEncryptionKey } from './crypto';
+
+/**
+ * Verify the shared INTERNAL_API_KEY on protected routes.
+ * Expects header: `x-api-key: <key>` or `Authorization: Bearer <key>`.
+ */
+async function verifyApiKey(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const key = env.INTERNAL_API_KEY;
+  if (!key) {
+    // If no key is configured, skip auth (dev mode)
+    return;
+  }
+  const provided =
+    request.headers['x-api-key'] ??
+    request.headers.authorization?.replace('Bearer ', '');
+  if (provided !== key) {
+    reply.status(401).send({ ok: false, error: 'Unauthorized' });
+  }
+}
 
 const email = {
   type: 'object',
@@ -509,6 +531,7 @@ const run = async () => {
       schema: {
         body: notification,
       },
+      preHandler: verifyApiKey,
     },
     async (
       request: FastifyRequest<{ Body: FromSchema<typeof notification> }>,
@@ -1073,6 +1096,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(
     '/whatsapp/connect',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{ Body: { sessionId: string } }>,
       reply: FastifyReply
@@ -1100,6 +1124,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).get(
     '/whatsapp/qr/:sessionId',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{ Params: { sessionId: string } }>,
       reply: FastifyReply
@@ -1123,6 +1148,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(
     '/whatsapp/disconnect',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{ Body: { sessionId: string } }>,
       reply: FastifyReply
@@ -1144,6 +1170,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).get(
     '/whatsapp/groups/:sessionId',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{ Params: { sessionId: string } }>,
       reply: FastifyReply
@@ -1165,6 +1192,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(
     '/whatsapp/import',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{
         Body: {
@@ -1195,6 +1223,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).get(
     '/whatsapp/import-status/:groupDbId',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{ Params: { groupDbId: string } }>,
       reply: FastifyReply
@@ -1216,6 +1245,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(
     '/whatsapp/sync',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{
         Body: {
@@ -1247,6 +1277,7 @@ const run = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).post(
     '/whatsapp/reply',
+    { preHandler: verifyApiKey },
     async (
       req: FastifyRequest<{
         Body: {
@@ -1272,6 +1303,14 @@ const run = async () => {
       }
     }
   );
+
+  // Fail fast if encryption key is misconfigured
+  try {
+    validateEncryptionKey();
+    console.log('✅ WhatsApp encryption key validated');
+  } catch (err) {
+    console.warn('⚠️ WhatsApp encryption key not configured:', (err as Error).message);
+  }
 
   await server.listen({ port: env.PORT, host: '0.0.0.0' });
   console.log(

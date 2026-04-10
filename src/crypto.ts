@@ -20,6 +20,14 @@ const PREFIX = 'enc:v1:';
 
 let cachedKey: Buffer | null = null;
 
+/**
+ * Eagerly validate the encryption key at startup.
+ * Call this during server init so we fail fast instead of on first request.
+ */
+export function validateEncryptionKey(): void {
+  getKey(); // will throw with a descriptive message if key is missing/invalid
+}
+
 function getKey(): Buffer {
   if (cachedKey) return cachedKey;
 
