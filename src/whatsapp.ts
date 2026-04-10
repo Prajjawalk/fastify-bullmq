@@ -239,15 +239,17 @@ export class WhatsAppService {
       }
     }
 
-    // Update status to QR_PENDING
+    const authPath = path.join(this.authBasePath, sessionId);
+    const { state, saveCreds } = await useEncryptedMultiFileAuthState(authPath);
+
+    // Only set QR_PENDING if there's no existing auth (fresh connection).
+    // Reconnects with valid auth skip QR entirely — set RECONNECTING instead.
+    const hasAuthCreds = !!state.creds?.me?.id;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any).whatsAppSession.update({
       where: { id: sessionId },
-      data: { status: 'QR_PENDING' },
+      data: { status: hasAuthCreds ? 'RECONNECTING' : 'QR_PENDING' },
     });
-
-    const authPath = path.join(this.authBasePath, sessionId);
-    const { state, saveCreds } = await useEncryptedMultiFileAuthState(authPath);
     const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
@@ -986,7 +988,7 @@ export class WhatsAppService {
     if (!sock) return 'DISCONNECTED';
     if (sock.user) return 'CONNECTED';
     if (this.qrCodes.has(sessionId)) return 'QR_PENDING';
-    return 'DISCONNECTED';
+    return 'RECONNECTING';
   }
 
   // ─── Persistent Listener (Real-time Sync) ──────────────
