@@ -1179,7 +1179,7 @@ function generateEmailHTML(reportTitle: string, orgName: string): string {
               <li>Strategic recommendations</li>
             </ul>
             <p>Please find the complete report in the PDF attachment.</p>
-            <p>If you have any questions about your report, please don't hesitate to contact your advisor.</p>
+            <p>If you have any questions about your report, please contact your One2b advisor directly or email us at <a href="mailto:hello@one2b.io" style="color: #2563eb;">hello@one2b.io</a>.</p>
           </div>
           <div class="footer">
             <p>&copy; ${new Date().getFullYear()} PDV Reports. All rights reserved.</p>
@@ -1198,15 +1198,11 @@ Hello,
 
 Your ${reportTitle} for ${orgName} has been generated and is attached to this email.
 
-The report contains a comprehensive assessment of your data assets including:
-- Preliminary Data Valuation (PDV) calculations
-- Preliminary Data Valuation questionnaire results
-- Competitive analysis and market positioning
-- Strategic recommendations
+The report contains a comprehensive assessment of your data assets including Preliminary Data Valuation (PDV) calculations, Preliminary Data Valuation questionnaire results, competitive analysis and market positioning, and strategic recommendations.
 
 Please find the complete report in the PDF attachment.
 
-If you have any questions about your report, please don't hesitate to contact your advisor.
+If you have any questions about your report, please contact your One2b advisor directly or email us at hello@one2b.io.
 
 © ${new Date().getFullYear()} PDV Reports. All rights reserved.
   `;

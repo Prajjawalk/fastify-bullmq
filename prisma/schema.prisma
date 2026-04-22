@@ -15,7 +15,7 @@ model KnowledgeChunk {
   section   String   // chapter/section title
   content   String   // the actual text chunk
   metadata  Json?    // additional metadata (chapter number, page, etc.)
-  embedding Unsupported("vector(1024)")? // Voyage AI voyage-3 dimension
+  embedding Unsupported("vector(1024)")? // Voyage AI voyage-4 dimension
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
