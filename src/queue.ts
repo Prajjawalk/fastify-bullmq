@@ -41,15 +41,49 @@ export const setupQueueProcessor = async (
         subject: string;
         htmlBody: string;
         textBody: string;
-        attachments?: Array<{
+        /**
+         * Filename for the PDF attachment. Content is fetched from
+         * `Report.pdfReportData` at send time so admin edits during the
+         * 48-hour delay window are reflected in the email.
+         */
+        attachmentName?: string;
+      };
+
+      try {
+        // Pull the LATEST PDF from the report row. This intentionally runs
+        // at send time (not at scheduling time) so that any admin edits
+        // made during the 48-hour delay are picked up.
+        let attachments: Array<{
           Name: string;
           Content: string;
           ContentID: string;
           ContentType: string;
-        }>;
-      };
+        }> | undefined;
 
-      try {
+        if (data.attachmentName) {
+          const reportRow = (await (db as any).report.findUnique({
+            where: { id: data.reportId },
+            select: { pdfReportData: true },
+          })) as { pdfReportData: string | null } | null;
+
+          if (!reportRow?.pdfReportData) {
+            // No PDF available — fail the job. The processor will mark
+            // the report row as DELIVERY_FAILED via the catch block below.
+            throw new Error(
+              `Report ${data.reportId} has no pdfReportData at send time`
+            );
+          }
+
+          attachments = [
+            {
+              Name: data.attachmentName,
+              Content: reportRow.pdfReportData,
+              ContentID: 'adv-report-pdf',
+              ContentType: 'application/pdf',
+            },
+          ];
+        }
+
         const postmarkClient = new ServerClient(env.AUTH_POSTMARK_KEY);
         const result = await postmarkClient.sendEmail({
           From: data.fromEmail,
@@ -58,7 +92,7 @@ export const setupQueueProcessor = async (
           HtmlBody: data.htmlBody,
           TextBody: data.textBody,
           MessageStream: 'outbound',
-          Attachments: data.attachments,
+          Attachments: attachments,
         });
 
         // Update report with delivery success - directly in DB instead of webhook

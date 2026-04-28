@@ -978,12 +978,12 @@ export interface PDVReportJobResult {
     subject: string;
     htmlBody: string;
     textBody: string;
-    attachments: Array<{
-      Name: string;
-      Content: string;
-      ContentID: string;
-      ContentType: string;
-    }>;
+    /**
+     * Filename for the PDF attachment. The actual base64 content is read
+     * from `Report.pdfReportData` at send time so admin edits made during
+     * the 48-hour delay window are reflected in the delivered email.
+     */
+    attachmentName: string;
   };
 }
 
@@ -1094,13 +1094,20 @@ export async function processPDVReportJob(
       },
     });
 
-    // Step 6: Schedule email via the existing EmailQueue
-    // This is done by returning the email data - the caller (queue processor) will handle scheduling
+    // Step 6: Schedule email via the existing EmailQueue.
+    //
+    // We deliberately do NOT include the PDF in the job payload. The PDF
+    // base64 is stored on Report.pdfReportData and the EmailQueue worker
+    // re-fetches the LATEST version at send time. This way, edits an
+    // admin makes during the 48-hour delay window (e.g. via the report
+    // editor) are reflected in the email the recipient actually receives.
+    //
+    // We also pass `attachmentName` so the email worker can build the
+    // Postmark Attachments[] entry without baking it into the payload.
     if (pdfReportData && userEmail) {
       console.log('📧 Scheduling email delivery...');
       const reportTitle = `PDV Report - ${orgName}`;
 
-      // We return the email data so the queue.ts can schedule it in EmailQueue
       return {
         success: true,
         emailData: {
@@ -1111,14 +1118,7 @@ export async function processPDVReportJob(
           subject: `Your ${reportTitle} is Ready`,
           htmlBody: generateEmailHTML(reportTitle, orgName),
           textBody: generateEmailText(reportTitle, orgName),
-          attachments: [
-            {
-              Name: `${reportTitle}.pdf`,
-              Content: pdfReportData,
-              ContentID: 'adv-report-pdf',
-              ContentType: 'application/pdf',
-            },
-          ],
+          attachmentName: `${reportTitle}.pdf`,
         },
       };
     }
@@ -1154,35 +1154,95 @@ function generateEmailHTML(reportTitle: string, orgName: string): string {
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Your ${reportTitle} is Ready</title>
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background-color: #2563eb; color: white; padding: 20px; text-align: center; }
-          .content { background-color: #f9fafb; padding: 30px; }
-          .button { background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; }
-          .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
+          body {
+            font-family: 'Avenir Next', 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.6;
+            color: #1E293B;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+          }
+          .container { max-width: 600px; margin: 0 auto; padding: 32px 16px; }
+          .email-card {
+            background: #ffffff;
+            border-radius: 0;
+            overflow: hidden;
+          }
+          .header {
+            background: linear-gradient(180deg, #b8d4f0 0%, #d4e4f6 50%, #eaf1fb 100%);
+            padding: 36px 40px 28px 40px;
+            text-align: center;
+          }
+          .header img {
+            height: 44px;
+            width: auto;
+          }
+          .content {
+            padding: 40px 40px 32px 40px;
+          }
+          .content p {
+            color: #1E293B;
+            margin: 0 0 16px 0;
+          }
+          .feature-list {
+            background: rgba(120, 171, 238, 0.08);
+            padding: 20px 20px 20px 40px;
+            border-radius: 16px;
+            margin: 16px 0;
+          }
+          .feature-list li {
+            color: #1E293B;
+            padding: 6px 0;
+          }
+          .disclaimer {
+            padding: 24px 40px;
+            font-size: 8pt;
+            line-height: 1.5;
+            color: #94A3B8;
+          }
+          .disclaimer p {
+            margin: 0 0 12px 0;
+            color: #94A3B8;
+          }
+          .disclaimer p:last-child {
+            margin-bottom: 0;
+          }
         </style>
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>Your PDV Report is Ready</h1>
-          </div>
-          <div class="content">
-            <p>Hello,</p>
-            <p>Your <strong>${reportTitle}</strong> for ${orgName} has been generated and is attached to this email.</p>
-            <p>The report contains a comprehensive assessment of your data assets including:</p>
-            <ul>
-              <li>Preliminary Data Valuation (PDV) calculations</li>
-              <li>Preliminary Data Valuation questionnaire results</li>
-              <li>Competitive analysis and market positioning</li>
-              <li>Strategic recommendations</li>
-            </ul>
-            <p>Please find the complete report in the PDF attachment.</p>
-            <p>If you have any questions about your report, please contact your One2b advisor directly or email us at <a href="mailto:hello@one2b.io" style="color: #2563eb;">hello@one2b.io</a>.</p>
-          </div>
-          <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} PDV Reports. All rights reserved.</p>
+          <div class="email-card">
+            <div class="header">
+              <img src="https://one2b.io/images/branding/one2b-transparent.png" alt="One2b" />
+              <h1 style="margin: 16px 0 0 0; color: #1E293B; font-size: 24px; font-weight: 600;">Your ${reportTitle} is Ready</h1>
+              <p style="margin: 12px 0 0 0; color: #64748B; font-size: 16px;">${orgName}</p>
+            </div>
+            <div class="content">
+              <p style="color: #1E293B;">Hello,</p>
+              <p style="color: #1E293B;">Your <strong>${reportTitle}</strong> for ${orgName} has been generated and is attached to this email.</p>
+
+              <p style="color: #1E293B;">The report contains a comprehensive assessment of your data assets including:</p>
+              <ul class="feature-list">
+                <li>Preliminary Data Valuation (PDV) calculations</li>
+                <li>Summary of your questionnaire responses</li>
+                <li>Competitive analysis and market positioning</li>
+                <li>Strategic recommendations</li>
+              </ul>
+
+              <p style="color: #1E293B;">If you have any questions about your report, please contact your One2b advisor directly or email us at <a href="mailto:hello@one2b.io" style="color: #6E7F9B;">hello@one2b.io</a>.</p>
+
+              <p style="color: #1E293B; margin-top: 24px;">Best regards,<br><strong>The One2b Team</strong></p>
+            </div>
+            <div class="disclaimer">
+              <p>CONFIDENTIALITY NOTICE: This email and any attachments are confidential and intended solely for the named recipient(s). If received in error, please notify the sender and delete it immediately. Any unauthorized use, disclosure, copying, or distribution is prohibited.</p>
+              <p>DISCLAIMER: Any data valuations, projections, or forward-looking statements referenced herein are indicative only and do not constitute financial, accounting, legal, or investment advice. Valuations are provided &ldquo;as is&rdquo; and may change based on data quality, methodology updates, regulatory considerations, or market conditions. One2b accepts no liability for actions taken in reliance on this information. Personal data is processed in accordance with applicable data protection and privacy laws.</p>
+              <p>&copy; ${new Date().getFullYear()} One2b Pte Ltd. All rights reserved.</p>
+            </div>
           </div>
         </div>
       </body>
@@ -1193,17 +1253,24 @@ function generateEmailHTML(reportTitle: string, orgName: string): string {
 function generateEmailText(reportTitle: string, orgName: string): string {
   return `
 Your ${reportTitle} is Ready
+${orgName}
 
 Hello,
 
 Your ${reportTitle} for ${orgName} has been generated and is attached to this email.
 
-The report contains a comprehensive assessment of your data assets including Preliminary Data Valuation (PDV) calculations, Preliminary Data Valuation questionnaire results, competitive analysis and market positioning, and strategic recommendations.
-
-Please find the complete report in the PDF attachment.
+The report contains a comprehensive assessment of your data assets including Preliminary Data Valuation (PDV) calculations, a summary of your questionnaire responses, competitive analysis and market positioning, and strategic recommendations.
 
 If you have any questions about your report, please contact your One2b advisor directly or email us at hello@one2b.io.
 
-© ${new Date().getFullYear()} PDV Reports. All rights reserved.
+Best regards,
+The One2b Team
+
+---
+CONFIDENTIALITY NOTICE: This email and any attachments are confidential and intended solely for the named recipient(s). If received in error, please notify the sender and delete it immediately. Any unauthorized use, disclosure, copying, or distribution is prohibited.
+
+DISCLAIMER: Any data valuations, projections, or forward-looking statements referenced herein are indicative only and do not constitute financial, accounting, legal, or investment advice. Valuations are provided "as is" and may change based on data quality, methodology updates, regulatory considerations, or market conditions. One2b accepts no liability for actions taken in reliance on this information. Personal data is processed in accordance with applicable data protection and privacy laws.
+
+© ${new Date().getFullYear()} One2b Pte Ltd. All rights reserved.
   `;
 }
