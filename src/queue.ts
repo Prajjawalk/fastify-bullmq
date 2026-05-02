@@ -42,25 +42,46 @@ export const setupQueueProcessor = async (
         htmlBody: string;
         textBody: string;
         /**
-         * Filename for the PDF attachment. Content is fetched from
+         * NEW shape — filename only. PDF content is fetched from
          * `Report.pdfReportData` at send time so admin edits during the
          * 48-hour delay window are reflected in the email.
          */
         attachmentName?: string;
-      };
-
-      try {
-        // Pull the LATEST PDF from the report row. This intentionally runs
-        // at send time (not at scheduling time) so that any admin edits
-        // made during the 48-hour delay are picked up.
-        let attachments: Array<{
+        /**
+         * LEGACY shape — caller pre-baked the attachment(s) into the
+         * job payload. Still supported for non-PDV emails coming through
+         * the /add-mailing-job HTTP endpoint.
+         */
+        attachments?: Array<{
           Name: string;
           Content: string;
           ContentID: string;
           ContentType: string;
-        }> | undefined;
+        }>;
+      };
 
-        if (data.attachmentName) {
+      try {
+        // Resolve attachments. Three sources, in priority order:
+        //   1. data.attachments[] — caller passed the full payload
+        //      (legacy / non-PDV flows). Use directly.
+        //   2. data.attachmentName + data.reportId — new PDV shape:
+        //      look up the latest PDF from Report.pdfReportData.
+        //   3. data.reportId only (no attachments, no attachmentName) —
+        //      this happens for pre-migration PDV jobs that were queued
+        //      before attachmentName was added to the payload. Fall back
+        //      to a sensible default filename so the PDF still ships.
+        let attachments:
+          | Array<{
+              Name: string;
+              Content: string;
+              ContentID: string;
+              ContentType: string;
+            }>
+          | undefined;
+
+        if (data.attachments && data.attachments.length > 0) {
+          attachments = data.attachments;
+        } else if (data.attachmentName || data.reportId) {
           const reportRow = (await (db as any).report.findUnique({
             where: { id: data.reportId },
             select: { pdfReportData: true },
@@ -74,14 +95,28 @@ export const setupQueueProcessor = async (
             );
           }
 
+          // Default the filename if the legacy job didn't include one.
+          // The subject already contains "PDV Report - <orgName>", so
+          // we mirror that pattern for the file the recipient sees.
+          const filename =
+            data.attachmentName ??
+            (data.subject
+              ? `${data.subject.replace(/^Your\s+/i, '').replace(/\s+is Ready$/i, '')}.pdf`
+              : 'Report.pdf');
+
           attachments = [
             {
-              Name: data.attachmentName,
+              Name: filename,
               Content: reportRow.pdfReportData,
               ContentID: 'adv-report-pdf',
               ContentType: 'application/pdf',
             },
           ];
+          if (!data.attachmentName) {
+            console.warn(
+              `📎 Email job for report ${data.reportId} had no attachmentName (legacy shape); attaching PDF as "${filename}"`
+            );
+          }
         }
 
         const postmarkClient = new ServerClient(env.AUTH_POSTMARK_KEY);

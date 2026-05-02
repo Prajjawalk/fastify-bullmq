@@ -38,18 +38,60 @@ function fileNameFor(type: string, id: string): string {
   return `${type}-${safeId}${FILE_EXT}`;
 }
 
-async function readEncrypted(filePath: string): Promise<unknown | null> {
+/**
+ * Result type so the caller can distinguish "not found" (normal first-run)
+ * from "corrupt" (key rotated, partial write, etc.) and react accordingly.
+ */
+type ReadResult =
+  | { status: 'ok'; value: unknown }
+  | { status: 'missing' }
+  | { status: 'corrupt' };
+
+async function readEncrypted(filePath: string): Promise<ReadResult> {
+  let encrypted: Buffer;
   try {
-    const encrypted = await fs.readFile(filePath);
+    encrypted = await fs.readFile(filePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return { status: 'missing' };
+    }
+    console.error(`Failed to read encrypted file ${filePath}:`, err);
+    return { status: 'corrupt' };
+  }
+
+  try {
     const plaintext = decryptBuffer(encrypted);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return JSON.parse(plaintext.toString('utf8'), BufferJSON.reviver);
+    return {
+      status: 'ok',
+      value: JSON.parse(plaintext.toString('utf8'), BufferJSON.reviver),
+    };
   } catch (err) {
-    // File doesn't exist or decryption failed
-    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
-      console.error(`Failed to read encrypted file ${filePath}:`, err);
-    }
-    return null;
+    console.error(`Failed to decrypt ${filePath}:`, err);
+    return { status: 'corrupt' };
+  }
+}
+
+/**
+ * Delete every file in the auth folder. Used when creds decryption fails —
+ * the per-key files (signed prekeys, sender keys, app-state-sync-keys) were
+ * encrypted with the same lost key, so leaving them around just causes the
+ * same Decipheriv error on every reconnect. Wiping the folder forces a
+ * clean QR pairing.
+ */
+async function wipeAuthFolder(folder: string): Promise<void> {
+  try {
+    const entries = await fs.readdir(folder);
+    await Promise.all(
+      entries.map((name) =>
+        fs.unlink(path.join(folder, name)).catch(() => undefined),
+      ),
+    );
+    console.warn(
+      `🧹 Wiped ${entries.length} corrupted auth file(s) in ${folder} — fresh QR pairing required`,
+    );
+  } catch (err) {
+    console.error(`Failed to wipe auth folder ${folder}:`, err);
   }
 }
 
@@ -100,7 +142,23 @@ export async function useEncryptedMultiFileAuthState(
   }
 
   if (!creds) {
-    creds = ((await readEncrypted(credsPath)) as AuthenticationCreds | null) ?? initAuthCreds();
+    const credsResult = await readEncrypted(credsPath);
+    if (credsResult.status === 'corrupt') {
+      // Decryption failed — likely the WHATSAPP_ENCRYPTION_KEY changed or
+      // the file was partially written. Per-key files in this folder are
+      // also encrypted with the lost key, so leaving them around would
+      // cause the same Decipheriv error on every reconnect (the symptom
+      // is an infinite QR loop). Wipe the whole folder and start fresh.
+      console.warn(
+        `⚠️  creds${FILE_EXT} in ${folder} could not be decrypted. Wiping the auth folder so a fresh QR pairing can succeed.`,
+      );
+      await wipeAuthFolder(folder);
+      creds = initAuthCreds();
+    } else if (credsResult.status === 'ok') {
+      creds = credsResult.value as AuthenticationCreds;
+    } else {
+      creds = initAuthCreds();
+    }
   }
 
   return {
@@ -115,9 +173,16 @@ export async function useEncryptedMultiFileAuthState(
           await Promise.all(
             ids.map(async (id) => {
               const filePath = path.join(folder, fileNameFor(type, id));
-              let value = (await readEncrypted(filePath)) as
-                | SignalDataTypeMap[T]
-                | null;
+              const result = await readEncrypted(filePath);
+              if (result.status === 'corrupt') {
+                // Stale file from a prior encryption key. Drop it so
+                // Baileys treats this id as missing and re-requests a
+                // fresh key from WhatsApp instead of failing forever.
+                await removeFile(filePath);
+                return;
+              }
+              if (result.status !== 'ok') return;
+              let value = result.value as SignalDataTypeMap[T];
               if (value && type === 'app-state-sync-key') {
                 // v7: fromObject is deprecated; use create() for the same effect.
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
